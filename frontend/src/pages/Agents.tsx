@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Agent } from '../api'
 
-const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '' }
+const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '', specialty: '' }
 
 export default function Agents() {
   const [agents, setAgents] = useState<Agent[]>([])
@@ -29,6 +29,7 @@ export default function Agents() {
       goal: agent.goal,
       backstory: agent.backstory,
       model: agent.model,
+      specialty: agent.specialty,
     })
     setShowForm(true)
   }
@@ -68,8 +69,13 @@ export default function Agents() {
         {agents.map((agent) => (
           <div key={agent.id} className="agent-card">
             <div className="agent-avatar">{agent.name.slice(0, 1).toUpperCase()}</div>
-            <h3>{agent.name}</h3>
-            <div className="agent-role">{agent.role}</div>
+            <h3>
+              {agent.name} {agent.is_ceo && <span className="chip chip-ok">CEO</span>}
+            </h3>
+            <div className="agent-role">
+              {agent.role}
+              {agent.specialty && <span className="muted small"> · {agent.specialty}</span>}
+            </div>
             <p className="muted small">{agent.goal || 'No goal set'}</p>
             {agent.model && <div className="chip">{agent.model}</div>}
             <div className="card-actions">
@@ -120,6 +126,14 @@ export default function Agents() {
                 value={form.backstory}
                 onChange={(e) => setForm({ ...form, backstory: e.target.value })}
                 rows={2}
+              />
+            </label>
+            <label>
+              Specialty
+              <input
+                value={form.specialty}
+                onChange={(e) => setForm({ ...form, specialty: e.target.value })}
+                placeholder="research · writing · engineering · analysis"
               />
             </label>
             <label>

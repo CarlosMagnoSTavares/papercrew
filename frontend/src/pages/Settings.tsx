@@ -5,12 +5,16 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
+  const [company, setCompany] = useState('')
+  const [price, setPrice] = useState('0')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     api.settings.get().then((s) => {
       setSettings(s)
       setModel(s.default_model)
+      setCompany(s.company_name)
+      setPrice(s.price_per_1k_tokens)
     })
   }, [])
 
@@ -19,6 +23,8 @@ export default function SettingsPage() {
     const updated = await api.settings.update({
       ...(apiKey ? { openrouter_api_key: apiKey } : {}),
       default_model: model,
+      company_name: company,
+      price_per_1k_tokens: price,
     })
     setSettings(updated)
     setApiKey('')
@@ -31,7 +37,7 @@ export default function SettingsPage() {
   return (
     <div>
       <h1>Settings</h1>
-      <p className="subtitle">OpenRouter connection — free model by default</p>
+      <p className="subtitle">Company profile and OpenRouter connection</p>
 
       {settings.fake_llm && (
         <div className="banner">
@@ -40,6 +46,10 @@ export default function SettingsPage() {
       )}
 
       <form className="settings-form" onSubmit={save}>
+        <label>
+          Company name
+          <input value={company} onChange={(e) => setCompany(e.target.value)} />
+        </label>
         <label>
           OpenRouter API key{' '}
           {settings.openrouter_api_key_set && <span className="chip chip-ok">configured</span>}
@@ -53,6 +63,10 @@ export default function SettingsPage() {
         <label>
           Default model
           <input value={model} onChange={(e) => setModel(e.target.value)} />
+        </label>
+        <label>
+          Price per 1k tokens (USD, 0 for free models)
+          <input value={price} onChange={(e) => setPrice(e.target.value)} />
         </label>
         <p className="muted small">
           Free models: meta-llama/llama-3.3-70b-instruct:free · deepseek/deepseek-chat:free ·

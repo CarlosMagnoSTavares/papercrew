@@ -1,9 +1,25 @@
-"""Executes a PaperCrew task through a CrewAI crew (or a fake LLM in demo mode)."""
+"""Executes a PaperCrew task through a CrewAI crew (or a fake LLM in demo mode).
+
+Every run applies native token optimization (see token_optimizer):
+- dependency outputs enter the prompt as a compressed context graph
+- terse-mode style rules and a max_tokens cap bound the completion
+- prompt/completion tokens and estimated savings are stored on the run
+"""
 import os
 import threading
 import time
 
-from .db import AgentRow, RunRow, SessionLocal, SettingRow, TaskRow, utcnow
+from sqlalchemy import select
+
+from .db import AgentRow, RunRow, SessionLocal, SettingRow, TaskRow, add_event, utcnow
+from .token_optimizer import (
+    MAX_COMPLETION_TOKENS,
+    TERSE_SUFFIX,
+    build_context,
+    compress_text,
+    dependency_ids,
+    estimate_tokens,
+)
 
 DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
@@ -18,6 +34,15 @@ def get_setting(db, key: str, default: str = "") -> str:
     return row.value if row and row.value else default
 
 
+def unmet_dependencies(db, task: TaskRow) -> list[int]:
+    unmet = []
+    for dep_id in dependency_ids(task.depends_on):
+        dep = db.get(TaskRow, dep_id)
+        if dep is not None and dep.status != "done":
+            unmet.append(dep_id)
+    return unmet
+
+
 def _append_log(run_id: int, line: str) -> None:
     db = SessionLocal()
     try:
@@ -29,7 +54,7 @@ def _append_log(run_id: int, line: str) -> None:
         db.close()
 
 
-def _finish(run_id: int, status: str, output: str = "", error: str = "") -> None:
+def _finish(run_id: int, status: str, output: str = "", error: str = "", **metrics) -> None:
     db = SessionLocal()
     try:
         run = db.get(RunRow, run_id)
@@ -39,57 +64,158 @@ def _finish(run_id: int, status: str, output: str = "", error: str = "") -> None
         run.output = output
         run.error = error
         run.finished_at = utcnow()
+        for key, value in metrics.items():
+            setattr(run, key, value)
         task = db.get(TaskRow, run.task_id)
         if task is not None:
             task.status = "review" if status == "completed" else "in_progress"
+            add_event(
+                db,
+                "run_" + status,
+                f"Run #{run_id} for task '{task.title}' {status}",
+            )
         db.commit()
     finally:
         db.close()
 
 
-def _run_fake(run_id: int, task: TaskRow, agent: AgentRow) -> None:
-    _append_log(run_id, f"[demo] Crew assembled with agent '{agent.name}' ({agent.role})")
-    time.sleep(0.5)
-    _append_log(run_id, f"[demo] Agent working on task: {task.title}")
-    time.sleep(0.5)
+def _task_prompt(task: TaskRow, context: str) -> str:
+    parts = [task.description or task.title]
+    if context:
+        parts.append(f"\nContext from completed dependencies (compressed):\n{context}")
+    if task.feedback:
+        parts.append(f"\nReviewer feedback on previous attempt — address it:\n{task.feedback}")
+    return "\n".join(parts)
+
+
+def _gather_context(task: TaskRow) -> tuple[str, int]:
+    db = SessionLocal()
+    try:
+        def get_task(task_id: int):
+            return db.get(TaskRow, task_id)
+
+        def get_latest_output(task_id: int) -> str:
+            run = db.scalars(
+                select(RunRow)
+                .where(RunRow.task_id == task_id, RunRow.status == "completed")
+                .order_by(RunRow.id.desc())
+            ).first()
+            return run.output if run else ""
+
+        return build_context(task, get_task, get_latest_output)
+    finally:
+        db.close()
+
+
+def _run_fake(run_id: int, task: TaskRow, agent: AgentRow, prompt: str, saved: int) -> None:
+    _append_log(run_id, f"[demo] Crew assembled — agent '{agent.name}' ({agent.role})")
+    if saved:
+        _append_log(run_id, f"[optimizer] context graph compressed, ~{saved} tokens saved")
+    time.sleep(0.4)
+    _append_log(run_id, f"[demo] Working on: {task.title}")
+    time.sleep(0.4)
     output = (
         f"[demo output] {agent.name} completed '{task.title}'.\n\n"
-        f"Goal considered: {agent.goal or 'n/a'}\n"
-        f"Task description: {task.description or 'n/a'}\n\n"
-        "This is a simulated result (PAPERCREW_FAKE_LLM=1). "
-        "Set an OpenRouter API key in Settings and disable demo mode for real runs."
+        f"Prompt used ({estimate_tokens(prompt)} est. tokens):\n{compress_text(prompt, 400)}\n\n"
+        "Simulated result (PAPERCREW_FAKE_LLM=1). Configure an OpenRouter key for real runs."
     )
     _append_log(run_id, "[demo] Run finished")
-    _finish(run_id, "completed", output=output)
-
-
-def _run_crewai(run_id: int, task: TaskRow, agent: AgentRow, api_key: str, model: str) -> None:
-    from crewai import Agent, Crew, LLM, Process, Task
-
-    llm = LLM(model=f"openrouter/{model}", api_key=api_key, base_url=OPENROUTER_BASE)
-    crew_agent = Agent(
-        role=agent.role,
-        goal=agent.goal or f"Complete assigned tasks as {agent.role}",
-        backstory=agent.backstory or f"{agent.name}, a diligent {agent.role}.",
-        llm=llm,
-        verbose=False,
+    _finish(
+        run_id,
+        "completed",
+        output=output,
+        prompt_tokens=estimate_tokens(prompt),
+        completion_tokens=estimate_tokens(output),
+        tokens_saved=saved,
+        cost=0.0,
     )
+
+
+def _build_llm(api_key: str, model: str):
+    from crewai import LLM
+
+    return LLM(
+        model=f"openrouter/{model}",
+        api_key=api_key,
+        base_url=OPENROUTER_BASE,
+        max_tokens=MAX_COMPLETION_TOKENS,
+    )
+
+
+def _run_crewai(
+    run_id: int, task: TaskRow, agent: AgentRow, api_key: str, model: str,
+    prompt: str, saved: int,
+) -> None:
+    from crewai import Agent, Crew, Process, Task
+
+    llm = _build_llm(api_key, model)
+
+    def make_agent(row: AgentRow) -> Agent:
+        return Agent(
+            role=row.role,
+            goal=compress_text(row.goal or f"Complete assigned tasks as {row.role}", 300),
+            backstory=compress_text(row.backstory or f"{row.name}, diligent {row.role}.", 300),
+            llm=llm,
+            verbose=False,
+        )
+
     crew_task = Task(
-        description=task.description or task.title,
-        expected_output=task.expected_output or "A clear, complete result for the task.",
-        agent=crew_agent,
+        description=prompt + TERSE_SUFFIX,
+        expected_output=compress_text(
+            task.expected_output or "A clear, complete, concise result.", 300
+        ),
+        agent=None,
     )
-    crew = Crew(
-        agents=[crew_agent],
-        tasks=[crew_task],
-        process=Process.sequential,
-        verbose=False,
-        step_callback=lambda step: _append_log(run_id, f"[step] {type(step).__name__}"),
-        task_callback=lambda out: _append_log(run_id, "[task] completed"),
-    )
-    _append_log(run_id, f"[crewai] Kickoff with model openrouter/{model}")
+
+    if task.crew_mode == "hierarchical":
+        db = SessionLocal()
+        try:
+            workers = [
+                make_agent(a)
+                for a in db.scalars(select(AgentRow).where(AgentRow.is_ceo == 0)).all()
+            ]
+        finally:
+            db.close()
+        crew = Crew(
+            agents=workers,
+            tasks=[crew_task],
+            process=Process.hierarchical,
+            manager_llm=llm,
+            verbose=False,
+        )
+        _append_log(run_id, f"[crewai] Hierarchical crew of {len(workers)} agents, model {model}")
+    else:
+        crew_agent = make_agent(agent)
+        crew_task.agent = crew_agent
+        crew = Crew(
+            agents=[crew_agent],
+            tasks=[crew_task],
+            process=Process.sequential,
+            verbose=False,
+        )
+        _append_log(run_id, f"[crewai] Solo crew ({agent.name}), model openrouter/{model}")
+
+    if saved:
+        _append_log(run_id, f"[optimizer] context graph compressed, ~{saved} tokens saved")
+
     result = crew.kickoff()
-    _finish(run_id, "completed", output=str(result))
+    usage = getattr(crew, "usage_metrics", None)
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or estimate_tokens(prompt)
+    completion_tokens = getattr(usage, "completion_tokens", 0) or estimate_tokens(str(result))
+    db = SessionLocal()
+    try:
+        price = float(get_setting(db, "price_per_1k_tokens", "0") or 0)
+    finally:
+        db.close()
+    _finish(
+        run_id,
+        "completed",
+        output=str(result),
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        tokens_saved=saved,
+        cost=round((prompt_tokens + completion_tokens) / 1000 * price, 6),
+    )
 
 
 def _execute(run_id: int, task_id: int) -> None:
@@ -111,8 +237,10 @@ def _execute(run_id: int, task_id: int) -> None:
         return
 
     try:
+        context, saved = _gather_context(task)
+        prompt = _task_prompt(task, context)
         if fake_llm_enabled():
-            _run_fake(run_id, task, agent)
+            _run_fake(run_id, task, agent, prompt, saved)
         elif not api_key:
             _finish(
                 run_id,
@@ -121,7 +249,7 @@ def _execute(run_id: int, task_id: int) -> None:
                 "or enable demo mode (PAPERCREW_FAKE_LLM=1).",
             )
         else:
-            _run_crewai(run_id, task, agent, api_key, model)
+            _run_crewai(run_id, task, agent, api_key, model, prompt, saved)
     except Exception as exc:  # noqa: BLE001 - surface any crew failure on the run
         _finish(run_id, "failed", error=str(exc))
 

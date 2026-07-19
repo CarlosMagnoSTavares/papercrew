@@ -102,6 +102,7 @@ export default function Board() {
         <TaskDrawer
           task={selected}
           agents={agents}
+          allTasks={tasks}
           onClose={() => setSelected(null)}
           onChanged={refresh}
         />

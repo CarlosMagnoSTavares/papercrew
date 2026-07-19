@@ -3,15 +3,27 @@ platform win32 -- Python 3.13.9, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\carlo\De
 cachedir: .pytest_cache
 rootdir: C:\Users\carlo\Desktop\papercrew\backend
 plugins: anyio-4.14.2
-collecting ... collected 7 items
+collecting ... collected 19 items
 
-tests/test_api.py::test_health PASSED                                    [ 14%]
-tests/test_api.py::test_seed_agents_present PASSED                       [ 28%]
-tests/test_api.py::test_agent_crud PASSED                                [ 42%]
-tests/test_api.py::test_task_crud_and_validation PASSED                  [ 57%]
-tests/test_api.py::test_run_requires_agent PASSED                        [ 71%]
-tests/test_api.py::test_run_task_fake_llm_completes PASSED               [ 85%]
-tests/test_api.py::test_settings_roundtrip PASSED                        [100%]
+tests/test_api.py::test_health PASSED                                    [  5%]
+tests/test_api.py::test_seed_agents_with_ceo PASSED                      [ 10%]
+tests/test_api.py::test_agent_crud PASSED                                [ 15%]
+tests/test_api.py::test_task_validation PASSED                           [ 21%]
+tests/test_api.py::test_run_completes_with_metrics PASSED                [ 26%]
+tests/test_api.py::test_dependency_blocking_and_context PASSED           [ 31%]
+tests/test_api.py::test_approve_and_reject_flow PASSED                   [ 36%]
+tests/test_api.py::test_comments_crud PASSED                             [ 42%]
+tests/test_api.py::test_chat_creates_dependency_chained_plan PASSED      [ 47%]
+tests/test_api.py::test_routines_crud_and_fire PASSED                    [ 52%]
+tests/test_api.py::test_events_and_stats PASSED                          [ 57%]
+tests/test_api.py::test_settings_roundtrip PASSED                        [ 63%]
+tests/test_optimizer.py::test_estimate_tokens PASSED                     [ 68%]
+tests/test_optimizer.py::test_compress_normalizes_and_dedupes PASSED     [ 73%]
+tests/test_optimizer.py::test_compress_respects_budget_on_sentence_boundary PASSED [ 78%]
+tests/test_optimizer.py::test_dependency_ids_parsing PASSED              [ 84%]
+tests/test_optimizer.py::test_walk_graph_transitive_and_cycle_safe PASSED [ 89%]
+tests/test_optimizer.py::test_build_context_compresses_and_reports_savings PASSED [ 94%]
+tests/test_optimizer.py::test_build_context_empty_without_deps PASSED    [100%]
 
 ============================== warnings summary ===============================
 ..\.venv\Lib\site-packages\fastapi\testclient.py:1
@@ -19,4 +31,4 @@ tests/test_api.py::test_settings_roundtrip PASSED                        [100%]
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 7 passed, 1 warning in 2.44s =========================
+======================== 19 passed, 1 warning in 5.24s ========================
