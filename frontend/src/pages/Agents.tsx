@@ -1,0 +1,146 @@
+import { FormEvent, useEffect, useState } from 'react'
+import { api, Agent } from '../api'
+
+const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '' }
+
+export default function Agents() {
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [editing, setEditing] = useState<Agent | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(EMPTY)
+  const [error, setError] = useState('')
+
+  const refresh = () => api.agents.list().then(setAgents).catch(console.error)
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm(EMPTY)
+    setShowForm(true)
+  }
+
+  const openEdit = (agent: Agent) => {
+    setEditing(agent)
+    setForm({
+      name: agent.name,
+      role: agent.role,
+      goal: agent.goal,
+      backstory: agent.backstory,
+      model: agent.model,
+    })
+    setShowForm(true)
+  }
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    try {
+      if (editing) await api.agents.update(editing.id, form)
+      else await api.agents.create(form)
+      setShowForm(false)
+      refresh()
+    } catch (err) {
+      setError(String(err))
+    }
+  }
+
+  const remove = async (agent: Agent) => {
+    if (!confirm(`Delete agent "${agent.name}"?`)) return
+    await api.agents.remove(agent.id)
+    refresh()
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Agents</h1>
+          <p className="subtitle">Your crew — each agent is a CrewAI worker</p>
+        </div>
+        <button className="btn btn-primary" onClick={openCreate}>
+          + Hire agent
+        </button>
+      </div>
+
+      <div className="card-grid">
+        {agents.map((agent) => (
+          <div key={agent.id} className="agent-card">
+            <div className="agent-avatar">{agent.name.slice(0, 1).toUpperCase()}</div>
+            <h3>{agent.name}</h3>
+            <div className="agent-role">{agent.role}</div>
+            <p className="muted small">{agent.goal || 'No goal set'}</p>
+            {agent.model && <div className="chip">{agent.model}</div>}
+            <div className="card-actions">
+              <button className="btn btn-ghost" onClick={() => openEdit(agent)}>
+                Edit
+              </button>
+              <button className="btn btn-danger" onClick={() => remove(agent)}>
+                Fire
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+            <h2>{editing ? 'Edit agent' : 'Hire agent'}</h2>
+            {error && <div className="error">{error}</div>}
+            <label>
+              Name
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Role
+              <input
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                required
+                placeholder="e.g. Researcher"
+              />
+            </label>
+            <label>
+              Goal
+              <textarea
+                value={form.goal}
+                onChange={(e) => setForm({ ...form, goal: e.target.value })}
+                rows={2}
+              />
+            </label>
+            <label>
+              Backstory
+              <textarea
+                value={form.backstory}
+                onChange={(e) => setForm({ ...form, backstory: e.target.value })}
+                rows={2}
+              />
+            </label>
+            <label>
+              Model override (optional)
+              <input
+                value={form.model}
+                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                placeholder="empty = default free model"
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
