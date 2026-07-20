@@ -116,6 +116,7 @@ def test_agent_stats():
 def test_budget_blocks_runs():
     from app.db import RunRow, SessionLocal
 
+    company = client.get("/api/companies").json()[0]
     agent = client.get("/api/agents").json()[1]
     task = client.post(
         "/api/tasks", json={"title": "Blocked by budget", "agent_id": agent["id"]}
@@ -128,22 +129,23 @@ def test_budget_blocks_runs():
     finally:
         db.close()
 
-    client.put("/api/settings", json={"monthly_budget": "5"})
+    client.patch(f"/api/companies/{company['id']}", json={"monthly_budget": 5})
     blocked = client.post(f"/api/tasks/{task['id']}/run")
     assert blocked.status_code == 402
     assert "Budget exceeded" in blocked.json()["detail"]
 
-    client.put("/api/settings", json={"monthly_budget": "0"})  # disabled again
+    client.patch(f"/api/companies/{company['id']}", json={"monthly_budget": 0})
     allowed = client.post(f"/api/tasks/{task['id']}/run")
     assert allowed.status_code == 202
     wait_run(allowed.json()["id"])
 
 
-def test_settings_mission_and_budget_roundtrip():
-    updated = client.put(
-        "/api/settings",
-        json={"company_mission": "Ship useful AI work", "monthly_budget": "5"},
+def test_company_profile_roundtrip():
+    company = client.get("/api/companies").json()[0]
+    updated = client.patch(
+        f"/api/companies/{company['id']}",
+        json={"mission": "Ship useful AI work", "monthly_budget": 5},
     ).json()
-    assert updated["company_mission"] == "Ship useful AI work"
-    assert updated["monthly_budget"] == "5"
-    client.put("/api/settings", json={"monthly_budget": "0"})
+    assert updated["mission"] == "Ship useful AI work"
+    assert updated["monthly_budget"] == 5
+    client.patch(f"/api/companies/{company['id']}", json={"monthly_budget": 0})

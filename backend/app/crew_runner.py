@@ -11,7 +11,17 @@ import time
 
 from sqlalchemy import select
 
-from .db import AgentRow, RunRow, SessionLocal, SettingRow, SkillRow, TaskRow, add_event, utcnow
+from .db import (
+    AgentRow,
+    CompanyRow,
+    RunRow,
+    SessionLocal,
+    SettingRow,
+    SkillRow,
+    TaskRow,
+    add_event,
+    utcnow,
+)
 from .token_optimizer import (
     MAX_COMPLETION_TOKENS,
     TERSE_SUFFIX,
@@ -82,6 +92,7 @@ def _finish(run_id: int, status: str, output: str = "", error: str = "", **metri
                 db,
                 "run_" + status,
                 f"Run #{run_id} for task '{task.title}' {status}",
+                task.company_id,
             )
         db.commit()
     finally:
@@ -188,7 +199,11 @@ def _run_crewai(
         try:
             workers = [
                 make_agent(a)
-                for a in db.scalars(select(AgentRow).where(AgentRow.is_ceo == 0)).all()
+                for a in db.scalars(
+                    select(AgentRow).where(
+                        AgentRow.is_ceo == 0, AgentRow.company_id == task.company_id
+                    )
+                ).all()
             ]
         finally:
             db.close()
@@ -239,9 +254,11 @@ def _execute(run_id: int, task_id: int) -> None:
     try:
         task = db.get(TaskRow, task_id)
         agent = db.get(AgentRow, task.agent_id) if task and task.agent_id else None
+        company = db.get(CompanyRow, task.company_id) if task else None
         api_key = get_setting(db, "openrouter_api_key", os.getenv("OPENROUTER_API_KEY", ""))
         model = (
             (agent.model if agent and agent.model else "")
+            or (company.default_model if company and company.default_model else "")
             or get_setting(db, "default_model", "")
             or DEFAULT_MODEL
         )

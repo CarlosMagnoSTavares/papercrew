@@ -18,6 +18,7 @@ class AgentIn(BaseModel):
 
 class AgentOut(AgentIn):
     id: int
+    company_id: int
     created_at: str
 
 
@@ -36,6 +37,7 @@ class TaskIn(BaseModel):
 
 class TaskOut(TaskIn):
     id: int
+    company_id: int
     feedback: str
     created_at: str
 
@@ -135,6 +137,7 @@ class GoalIn(BaseModel):
 
 class GoalOut(BaseModel):
     id: int
+    company_id: int
     title: str
     description: str
     status: str
@@ -144,16 +147,34 @@ class GoalOut(BaseModel):
     created_at: str
 
 
-class OnboardIn(BaseModel):
+class CompanyCreateIn(BaseModel):
     company_name: str = Field(min_length=1, max_length=120)
     mission: str = Field(min_length=1)
     first_goal: str = Field(min_length=1, max_length=200)
 
 
+class CompanyPatch(BaseModel):
+    name: str | None = None
+    mission: str | None = None
+    default_model: str | None = None
+    monthly_budget: float | None = None
+
+
 class CompanyOut(BaseModel):
-    onboarded: bool
-    company_name: str
-    company_mission: str
+    id: int
+    name: str
+    mission: str
+    default_model: str
+    monthly_budget: float
+    archived: bool
+    created_at: str
+
+
+class CompanySummaryOut(CompanyOut):
+    agents: int
+    active_goals: int
+    open_tasks: int
+    total_cost: float
 
 
 class HireIn(BaseModel):
@@ -213,21 +234,17 @@ class WorkProductOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
+    """Global settings — shared by every company."""
+
     openrouter_api_key: str | None = None
     default_model: str | None = None
-    company_name: str | None = None
-    company_mission: str | None = None
     price_per_1k_tokens: str | None = None
-    monthly_budget: str | None = None
 
 
 class SettingsOut(BaseModel):
     openrouter_api_key_set: bool
     default_model: str
-    company_name: str
-    company_mission: str
     price_per_1k_tokens: str
-    monthly_budget: str
     fake_llm: bool
 
 

@@ -1,5 +1,5 @@
-// Captures UI evidence screenshots. Requires FRESH backend (fake LLM, no seed,
-// not onboarded) + frontend dev servers.
+// Captures UI evidence screenshots. Requires a FRESH backend (fake LLM, no seed,
+// no companies) + the frontend dev server.
 import { chromium } from 'playwright'
 import { mkdirSync } from 'fs'
 
@@ -18,69 +18,102 @@ const nav = async (label) => {
 const tick = () =>
   page.evaluate(() => fetch('/api/goals/tick', { method: 'POST' }).then((r) => r.json()))
 
-// 1. Onboarding wizard with the example-fill chip (UX: one-click demo data)
+const fillCompany = async (name, mission, goal) => {
+  await page.waitForSelector('.onboard-card')
+  await page.fill('input[placeholder*="Nimbus"]', name)
+  await page.fill('textarea', mission)
+  await page.fill('input[placeholder*="campaign"]', goal)
+}
+
+// 1. First run: onboarding wizard
 await page.goto(BASE)
-await page.waitForSelector('.onboard-card')
-await page.click('button:has-text("Fill with an example")')
+await fillCompany(
+  'Nimbus Media',
+  'We help small brands grow with AI-generated content, campaigns and market research.',
+  'Launch the first client campaign',
+)
 await shot('01-onboarding')
 await page.click('.btn-big')
 await page.waitForSelector('.onboard-agents', { timeout: 20000 })
 await shot('02-company-ready')
+await page.click('button:has-text("Watch")')
 
-// 2. Goals + sidebar live widget + toast from autopilot activity
-await page.click('button:has-text("Watch your company work")')
+// 2. Autopilot working the first company's goal
 await page.waitForSelector('.goal-card')
-await page.waitForSelector('.sidebar-goal', { timeout: 15000 })
 for (let i = 0; i < 3; i++) {
   await tick()
-  await page.waitForTimeout(1200)
+  await page.waitForTimeout(1000)
 }
 await page.waitForSelector('.toast', { timeout: 15000 })
 await shot('03-goals-live-toast')
 
-// drive autopilot to completion
-for (let i = 0; i < 40; i++) {
+// 3. Create a SECOND company from the switcher
+await page.click('.switcher-trigger')
+await page.waitForSelector('.switcher-menu')
+await shot('04-company-switcher')
+await page.click('.switcher-new')
+await fillCompany(
+  'Vertex Labs',
+  'We build developer tools and technical documentation for API-first startups.',
+  'Ship the developer docs portal',
+)
+await page.click('.btn-big')
+await page.waitForSelector('.onboard-agents', { timeout: 20000 })
+await page.click('button:has-text("Watch")')
+await page.waitForSelector('.goal-card')
+
+// 4. Both companies working at the same time
+for (let i = 0; i < 6; i++) {
   await tick()
-  await page.waitForTimeout(1000)
-  const achieved = await page.evaluate(() =>
-    fetch('/api/goals')
-      .then((r) => r.json())
-      .then((gs) => gs.some((g) => g.status === 'achieved')),
-  )
-  if (achieved) break
+  await page.waitForTimeout(900)
 }
-await page.waitForTimeout(1500)
-await shot('04-goal-achieved')
+await nav('Companies')
+await page.waitForSelector('.company-card')
+await shot('05-companies-parallel')
 
-// 3. Empty state — Routines page before any routine exists
-await nav('Routines')
-await page.waitForSelector('.empty-state')
-await shot('05-empty-state')
+// 5. Drive every company's autopilot to completion
+for (let i = 0; i < 60; i++) {
+  await tick()
+  await page.waitForTimeout(700)
+  const allDone = await page.evaluate(async () => {
+    const companies = await fetch('/api/companies').then((r) => r.json())
+    const goals = await Promise.all(
+      companies.map((c) =>
+        fetch('/api/goals', { headers: { 'X-Company-Id': String(c.id) } }).then((r) => r.json()),
+      ),
+    )
+    return goals.every((list) => list.every((g) => g.status === 'achieved'))
+  })
+  if (allDone) break
+}
+await page.reload()
+await nav('Companies')
+await page.waitForSelector('.company-card')
+await shot('06-companies-achieved')
 
-// 4. Task drawer with spinner + optimizer + timeago
-await nav('Task Board')
-await page.waitForSelector('.task-card')
-const firstTitle = await page.$eval('.task-card .task-title', (el) => el.textContent)
-await page.click('.task-card')
-await page.waitForSelector('.drawer')
-await shot('06-task-drawer')
-await page.click('.drawer-header .btn-ghost')
-void firstTitle
+// 6. Second company's own goal history and dashboard
+await nav('Goals')
+await page.waitForSelector('.goal-card')
+await shot('07-goal-achieved')
 
-// 5. CEO chat with suggestion chips (empty state UX)
-await nav('CEO Chat')
-await page.waitForSelector('.chat-suggestions')
-await shot('07-chat-suggestions')
-
-// 6. Agents with skill chips + generate button
-await nav('Agents')
-await page.waitForSelector('.skill-chips')
-await shot('08-agents-skills')
-
-// 7. Dashboard — goal banner + activity with relative time
 await nav('Dashboard')
 await page.waitForSelector('.feed-row')
-await shot('09-dashboard')
+await shot('08-dashboard')
+
+await nav('Agents')
+await page.waitForSelector('.skill-chips')
+await shot('09-agents-skills')
+
+await nav('Task Board')
+await page.waitForSelector('.task-card')
+await page.click('.task-card')
+await page.waitForSelector('.drawer')
+await shot('10-task-drawer')
+await page.click('.drawer-header .btn-ghost')
+
+await nav('Settings')
+await page.waitForSelector('.settings-form')
+await shot('11-settings')
 
 await browser.close()
 console.log('Screenshots saved to', OUT)

@@ -1,4 +1,4 @@
-"""Tests for onboarding, skills distribution and the autopilot goal loop."""
+"""Tests for company creation, skills distribution and the autopilot goal loop."""
 import time
 
 from fastapi.testclient import TestClient
@@ -8,36 +8,37 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_onboarding_builds_company():
+def head(company_id: int) -> dict:
+    return {"X-Company-Id": str(company_id)}
+
+
+def test_company_creation_builds_crew_and_first_goal():
     res = client.post(
-        "/api/company/onboard",
+        "/api/companies",
         json={
             "company_name": "Nimbus Media",
             "mission": "Grow small brands with AI-generated content",
             "first_goal": "Launch the first client campaign",
         },
     )
-    assert res.status_code == 200, res.text
+    assert res.status_code == 201, res.text
     body = res.json()
+    cid = body["company"]["id"]
 
+    assert body["company"]["name"] == "Nimbus Media"
     assert len(body["agents"]) >= 5
     assert all(a["skills"] for a in body["agents"])
     assert body["goal"]["title"] == "Launch the first client campaign"
     assert len(body["tasks"]) >= 3
 
-    company = client.get("/api/company").json()
-    assert company["onboarded"] is True
-    assert company["company_name"] == "Nimbus Media"
+    listed = client.get("/api/companies").json()
+    nimbus = [c for c in listed if c["id"] == cid][0]
+    assert nimbus["agents"] >= 5
+    assert nimbus["active_goals"] == 1
 
-    goal_tasks = client.get(f"/api/goals/{body['goal']['id']}/tasks").json()
+    goal_tasks = client.get(f"/api/goals/{body['goal']['id']}/tasks", headers=head(cid)).json()
     assert len(goal_tasks) >= 3
-    assert all(t["goal_id"] == body["goal"]["id"] for t in goal_tasks)
-
-    again = client.post(
-        "/api/company/onboard",
-        json={"company_name": "X", "mission": "y", "first_goal": "z"},
-    )
-    assert again.status_code == 422
+    assert all(t["company_id"] == cid for t in goal_tasks)
 
 
 def test_skills_crud_and_generation():
@@ -80,15 +81,16 @@ def test_skills_appear_in_run_log():
 
 
 def test_autopilot_works_goal_to_completion():
-    goals = client.get("/api/goals").json()
-    goal = next(g for g in goals if g["title"] == "Launch the first client campaign")
+    company = [c for c in client.get("/api/companies").json() if c["name"] == "Nimbus Media"][0]
+    cid = company["id"]
+    goal = client.get("/api/goals", headers=head(cid)).json()[0]
     assert goal["status"] == "active"
 
     deadline = time.time() + 90
     while time.time() < deadline:
         client.post("/api/goals/tick")
         current = next(
-            g for g in client.get("/api/goals").json() if g["id"] == goal["id"]
+            g for g in client.get("/api/goals", headers=head(cid)).json() if g["id"] == goal["id"]
         )
         if current["status"] == "achieved":
             break
@@ -98,11 +100,11 @@ def test_autopilot_works_goal_to_completion():
     assert current["progress"] == 100
     assert current["cycle"] >= 2  # complementary planning rounds happened
 
-    tasks = client.get(f"/api/goals/{goal['id']}/tasks").json()
+    tasks = client.get(f"/api/goals/{goal['id']}/tasks", headers=head(cid)).json()
     assert len(tasks) >= 5  # initial + complementary
     assert all(t["status"] == "done" for t in tasks)
 
-    events = client.get("/api/events?limit=100").json()
+    events = client.get("/api/events?limit=100", headers=head(cid)).json()
     messages = " | ".join(e["message"] for e in events)
     assert "Autopilot started" in messages
     assert "Autopilot approved" in messages
@@ -118,3 +120,4 @@ def test_goal_pause_resume():
     assert paused["status"] == "paused"
     resumed = client.post(f"/api/goals/{created['id']}/resume").json()
     assert resumed["status"] == "active"
+    client.post(f"/api/goals/{created['id']}/pause")  # keep autopilot quiet for other tests

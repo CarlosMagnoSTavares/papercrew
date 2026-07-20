@@ -6,10 +6,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
-  const [company, setCompany] = useState('')
-  const [mission, setMission] = useState('')
   const [price, setPrice] = useState('0')
-  const [budget, setBudget] = useState('0')
   const [saved, setSaved] = useState(false)
   const toast = useToast()
 
@@ -17,10 +14,7 @@ export default function SettingsPage() {
     api.settings.get().then((s) => {
       setSettings(s)
       setModel(s.default_model)
-      setCompany(s.company_name)
-      setMission(s.company_mission)
       setPrice(s.price_per_1k_tokens)
-      setBudget(s.monthly_budget)
     })
   }, [])
 
@@ -29,10 +23,7 @@ export default function SettingsPage() {
     const updated = await api.settings.update({
       ...(apiKey ? { openrouter_api_key: apiKey } : {}),
       default_model: model,
-      company_name: company,
-      company_mission: mission,
       price_per_1k_tokens: price,
-      monthly_budget: budget,
     })
     setSettings(updated)
     setApiKey('')
@@ -46,7 +37,10 @@ export default function SettingsPage() {
   return (
     <div>
       <h1>Settings</h1>
-      <p className="subtitle">Company profile and OpenRouter connection</p>
+      <p className="subtitle">
+        Global OpenRouter connection — shared by every company. Each company's name, mission,
+        model override and budget live on the Companies page.
+      </p>
 
       {settings.fake_llm && (
         <div className="banner">
@@ -55,14 +49,6 @@ export default function SettingsPage() {
       )}
 
       <form className="settings-form" onSubmit={save}>
-        <label>
-          Company name
-          <input value={company} onChange={(e) => setCompany(e.target.value)} />
-        </label>
-        <label>
-          Company mission
-          <textarea value={mission} onChange={(e) => setMission(e.target.value)} rows={2} />
-        </label>
         <label>
           OpenRouter API key{' '}
           {settings.openrouter_api_key_set && <span className="chip chip-ok">configured</span>}
@@ -74,19 +60,13 @@ export default function SettingsPage() {
           />
         </label>
         <label>
-          Default model
+          Default model (companies inherit this unless they override it)
           <input value={model} onChange={(e) => setModel(e.target.value)} />
         </label>
-        <div className="form-row">
-          <label>
-            Price per 1k tokens (USD, 0 = free)
-            <input value={price} onChange={(e) => setPrice(e.target.value)} />
-          </label>
-          <label>
-            Monthly budget cap (USD, 0 = unlimited)
-            <input value={budget} onChange={(e) => setBudget(e.target.value)} />
-          </label>
-        </div>
+        <label>
+          Price per 1k tokens (USD, 0 = free)
+          <input value={price} onChange={(e) => setPrice(e.target.value)} />
+        </label>
         <p className="muted small">
           Free models: meta-llama/llama-3.3-70b-instruct:free · deepseek/deepseek-chat:free ·
           full list at openrouter.ai/models?q=free

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, Goal } from './api'
+import { api, Company, getActiveCompanyId, Goal, setActiveCompanyId } from './api'
 import { useToast } from './ui'
+import CompanySwitcher from './components/CompanySwitcher'
 import Onboarding from './pages/Onboarding'
+import Companies from './pages/Companies'
 import Goals from './pages/Goals'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
@@ -25,6 +27,7 @@ type Page =
   | 'routines'
   | 'runs'
   | 'products'
+  | 'companies'
   | 'settings'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
@@ -38,42 +41,56 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'routines', label: 'Routines', icon: '↻' },
   { id: 'runs', label: 'Run History', icon: '▶' },
   { id: 'products', label: 'Deliverables', icon: '⬡' },
+  { id: 'companies', label: 'Companies', icon: '🏢' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
-  const [company, setCompany] = useState('PaperCrew')
-  const [onboarded, setOnboarded] = useState<boolean | null>(null)
+  const [companies, setCompanies] = useState<Company[] | null>(null)
+  const [activeId, setActiveId] = useState<number | null>(getActiveCompanyId())
+  const [creating, setCreating] = useState(false)
   const [inboxCount, setInboxCount] = useState(0)
   const [openTaskId, setOpenTaskId] = useState<number | null>(null)
   const [activeGoal, setActiveGoal] = useState<Goal | null>(null)
   const toast = useToast()
   const lastEventId = useRef<number | null>(null)
 
-  const refreshBadge = useCallback(() => {
-    api.inbox()
-      .then((items) => setInboxCount(items.length))
-      .catch(() => undefined)
+  const loadCompanies = useCallback(async () => {
+    const list = await api.companies.list()
+    setCompanies(list)
+    setActiveId((current) => {
+      const stillThere = list.some((c) => c.id === current)
+      const next = stillThere ? current : (list[0]?.id ?? null)
+      setActiveCompanyId(next)
+      return next
+    })
+    return list
   }, [])
 
   useEffect(() => {
-    api.company
-      .get()
-      .then((c) => {
-        setOnboarded(c.onboarded)
-        if (c.onboarded && c.company_name) setCompany(c.company_name)
-      })
-      .catch(() => setOnboarded(true))
+    loadCompanies().catch(() => setCompanies([]))
+  }, [loadCompanies])
+
+  const refreshBadge = useCallback(() => {
+    if (!activeId) return
+    api.inbox()
+      .then((items) => setInboxCount(items.length))
+      .catch(() => undefined)
+  }, [activeId])
+
+  useEffect(() => {
     refreshBadge()
     const timer = window.setInterval(refreshBadge, 10000)
     return () => window.clearInterval(timer)
   }, [page, refreshBadge])
 
-  // Live company pulse: surface autopilot/goal/hire events as toasts,
-  // keep the sidebar goal widget fresh.
+  // Live company pulse: surface autopilot/goal/hire events of the active
+  // company as toasts, and keep the sidebar goal widget fresh.
   useEffect(() => {
+    if (!activeId) return
     const NOTIFY = new Set(['autopilot', 'goal', 'hire', 'company'])
+    lastEventId.current = null
     const pulse = async () => {
       try {
         const [events, goals] = await Promise.all([api.events(), api.goals.list()])
@@ -95,23 +112,40 @@ export default function App() {
     pulse()
     const timer = window.setInterval(pulse, 6000)
     return () => window.clearInterval(timer)
-  }, [toast])
+  }, [toast, activeId])
 
-  if (onboarded === null) return null
-  if (!onboarded) {
-    return (
-      <Onboarding
-        onDone={() => {
-          setOnboarded(true)
-          setPage('goals')
-        }}
-      />
-    )
+  const switchCompany = (id: number) => {
+    setActiveCompanyId(id)
+    setActiveId(id)
+    setActiveGoal(null)
+    setInboxCount(0)
+    setPage('dashboard')
+    const name = companies?.find((c) => c.id === id)?.name
+    if (name) toast('info', `Switched to ${name}`)
   }
 
   const openTask = (taskId: number) => {
     setOpenTaskId(taskId)
     setPage('board')
+  }
+
+  if (companies === null) return null
+
+  // First run, or the user explicitly asked for another company.
+  if (creating || companies.length === 0) {
+    return (
+      <Onboarding
+        canCancel={companies.length > 0}
+        onCancel={() => setCreating(false)}
+        onDone={async (newCompanyId) => {
+          setCreating(false)
+          await loadCompanies()
+          setActiveCompanyId(newCompanyId)
+          setActiveId(newCompanyId)
+          setPage('goals')
+        }}
+      />
+    )
   }
 
   return (
@@ -121,7 +155,12 @@ export default function App() {
           <span className="logo-mark">📎</span>
           <span className="logo-text">PaperCrew</span>
         </div>
-        <div className="company-name">{company}</div>
+        <CompanySwitcher
+          companies={companies}
+          activeId={activeId}
+          onSwitch={switchCompany}
+          onCreate={() => setCreating(true)}
+        />
         <nav>
           {NAV.map((item) => (
             <button
@@ -152,7 +191,8 @@ export default function App() {
           native token optimizer
         </div>
       </aside>
-      <main className="content">
+      {/* keyed by company so every page refetches when you switch */}
+      <main className="content" key={activeId ?? 'none'}>
         {page === 'dashboard' && <Dashboard />}
         {page === 'goals' && <Goals />}
         {page === 'inbox' && <Inbox onOpenTask={openTask} />}
@@ -165,6 +205,14 @@ export default function App() {
         {page === 'routines' && <Routines />}
         {page === 'runs' && <RunsPage />}
         {page === 'products' && <WorkProducts />}
+        {page === 'companies' && (
+          <Companies
+            activeId={activeId}
+            onSwitch={switchCompany}
+            onCreate={() => setCreating(true)}
+            onChanged={loadCompanies}
+          />
+        )}
         {page === 'settings' && <SettingsPage />}
       </main>
     </div>

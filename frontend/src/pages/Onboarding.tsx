@@ -2,7 +2,13 @@ import { FormEvent, useState } from 'react'
 import { api, OnboardResult } from '../api'
 import { Spinner } from '../ui'
 
-export default function Onboarding({ onDone }: { onDone: () => void }) {
+interface Props {
+  onDone: (companyId: number) => void
+  canCancel?: boolean
+  onCancel?: () => void
+}
+
+export default function Onboarding({ onDone, canCancel, onCancel }: Props) {
   const [form, setForm] = useState({ company_name: '', mission: '', first_goal: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -13,7 +19,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setBusy(true)
     setError('')
     try {
-      setResult(await api.company.onboard(form))
+      setResult(await api.companies.create(form))
     } catch (err) {
       setError(String(err))
     } finally {
@@ -25,10 +31,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     return (
       <div className="onboard-wrap">
         <div className="onboard-card">
-          <h1>🎉 {form.company_name} is live</h1>
+          <h1>🎉 {result.company.name} is live</h1>
           <p className="subtitle">
             The CEO built your team, distributed skills and planned the first goal. Autopilot is
-            already working toward it.
+            already working toward it — alongside any other company you run.
           </p>
           <h2>Your crew</h2>
           <div className="onboard-agents">
@@ -53,8 +59,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             🎯 <strong>{result.goal.title}</strong> — {result.tasks.length} tasks planned and
             delegated
           </p>
-          <button className="btn btn-primary" onClick={onDone}>
-            Watch your company work →
+          <button className="btn btn-primary" onClick={() => onDone(result.company.id)}>
+            Watch {result.company.name} work →
           </button>
         </div>
       </div>
@@ -68,10 +74,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           <span className="logo-mark">📎</span>
           <span className="logo-text">PaperCrew</span>
         </div>
-        <h1>Create your AI company</h1>
+        <h1>Create {canCancel ? 'another' : 'your'} AI company</h1>
         <p className="subtitle">
-          Describe your company once. The CEO hires the right agents, gives each one skills, sets
-          your first goal and puts the whole crew to work — autonomously.
+          Describe the company once. The CEO hires the right agents, gives each one skills, sets
+          the first goal and puts the whole crew to work — autonomously. Every company you create
+          runs its own crew in parallel.
         </p>
         {error && <div className="error">{error}</div>}
         <button
@@ -98,7 +105,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           />
         </label>
         <label>
-          What does your company do? (mission)
+          What does this company do? (mission)
           <textarea
             value={form.mission}
             onChange={(e) => setForm({ ...form, mission: e.target.value })}
@@ -119,6 +126,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <button className="btn btn-primary btn-big" disabled={busy}>
           {busy ? <Spinner label="CEO building your company…" /> : '🚀 Build my company'}
         </button>
+        {canCancel && (
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
       </form>
     </div>
   )

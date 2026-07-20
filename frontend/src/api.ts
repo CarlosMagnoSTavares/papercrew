@@ -83,12 +83,21 @@ export interface Goal {
 }
 
 export interface Company {
-  onboarded: boolean
-  company_name: string
-  company_mission: string
+  id: number
+  name: string
+  mission: string
+  default_model: string
+  monthly_budget: number
+  archived: boolean
+  created_at: string
+  agents: number
+  active_goals: number
+  open_tasks: number
+  total_cost: number
 }
 
 export interface OnboardResult {
+  company: { id: number; name: string; mission: string }
   agents: { id: number; name: string; role: string; skills: string[] }[]
   goal: { id: number; title: string }
   tasks: { id: number; title: string; agent: string }[]
@@ -162,17 +171,32 @@ export interface Stats {
 export interface Settings {
   openrouter_api_key_set: boolean
   default_model: string
-  company_name: string
-  company_mission: string
   price_per_1k_tokens: string
-  monthly_budget: string
   fake_llm: boolean
+}
+
+/** Active company — every request is scoped to it via the X-Company-Id header. */
+const STORAGE_KEY = 'papercrew.companyId'
+let activeCompanyId: number | null = Number(localStorage.getItem(STORAGE_KEY)) || null
+
+export function getActiveCompanyId(): number | null {
+  return activeCompanyId
+}
+
+export function setActiveCompanyId(id: number | null): void {
+  activeCompanyId = id
+  if (id === null) localStorage.removeItem(STORAGE_KEY)
+  else localStorage.setItem(STORAGE_KEY, String(id))
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(activeCompanyId ? { 'X-Company-Id': String(activeCompanyId) } : {}),
+      ...(init?.headers ?? {}),
+    },
   })
   if (!res.ok) {
     let detail = await res.text()
@@ -205,10 +229,17 @@ export const api = {
     removeSkill: (agentId: number, skillId: number) =>
       request<void>(`/api/agents/${agentId}/skills/${skillId}`, { method: 'DELETE' }),
   },
-  company: {
-    get: () => request<Company>('/api/company'),
-    onboard: (data: { company_name: string; mission: string; first_goal: string }) =>
-      request<OnboardResult>('/api/company/onboard', post(data)),
+  companies: {
+    list: (includeArchived = false) =>
+      request<Company[]>(`/api/companies${includeArchived ? '?include_archived=true' : ''}`),
+    create: (data: { company_name: string; mission: string; first_goal: string }) =>
+      request<OnboardResult>('/api/companies', post(data)),
+    update: (
+      id: number,
+      data: { name?: string; mission?: string; default_model?: string; monthly_budget?: number },
+    ) => request<Company>(`/api/companies/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    archive: (id: number) => request<Company>(`/api/companies/${id}/archive`, { method: 'POST' }),
+    restore: (id: number) => request<Company>(`/api/companies/${id}/restore`, { method: 'POST' }),
   },
   goals: {
     list: () => request<Goal[]>('/api/goals'),

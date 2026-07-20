@@ -1,23 +1,31 @@
-"""Activity feed, token/cost statistics, inbox and work products."""
+"""Activity feed, token/cost statistics, inbox and work products — per company."""
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import AgentRow, EventRow, HireRequestRow, RunRow, TaskRow, get_db
+from ..deps import current_company_id
 from ..schemas import EventOut, InboxItem, StatsOut, WorkProductOut
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
 
 @router.get("/events", response_model=list[EventOut])
-def list_events(limit: int = 30, db: Session = Depends(get_db)):
+def list_events(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    company_id: int = Depends(current_company_id),
+):
     return db.scalars(
-        select(EventRow).order_by(EventRow.id.desc()).limit(min(limit, 100))
+        select(EventRow)
+        .where(EventRow.company_id == company_id)
+        .order_by(EventRow.id.desc())
+        .limit(min(limit, 100))
     ).all()
 
 
 @router.get("/stats", response_model=StatsOut)
-def stats(db: Session = Depends(get_db)):
+def stats(db: Session = Depends(get_db), company_id: int = Depends(current_company_id)):
     row = db.execute(
         select(
             func.count(RunRow.id),
@@ -26,6 +34,8 @@ def stats(db: Session = Depends(get_db)):
             func.coalesce(func.sum(RunRow.tokens_saved), 0),
             func.coalesce(func.sum(RunRow.cost), 0.0),
         )
+        .join(TaskRow, TaskRow.id == RunRow.task_id)
+        .where(TaskRow.company_id == company_id)
     ).one()
     return StatsOut(
         total_runs=row[0],
@@ -37,20 +47,31 @@ def stats(db: Session = Depends(get_db)):
 
 
 @router.get("/inbox", response_model=list[InboxItem])
-def inbox(db: Session = Depends(get_db)):
+def inbox(db: Session = Depends(get_db), company_id: int = Depends(current_company_id)):
     items: list[InboxItem] = []
-    for task in db.scalars(select(TaskRow).where(TaskRow.status == "review")):
+    for task in db.scalars(
+        select(TaskRow).where(TaskRow.company_id == company_id, TaskRow.status == "review")
+    ):
         items.append(
             InboxItem(kind="review", ref_id=task.id, title=task.title,
                       detail="Result ready for your review — approve or request changes")
         )
-    for hire in db.scalars(select(HireRequestRow).where(HireRequestRow.status == "pending")):
+    for hire in db.scalars(
+        select(HireRequestRow).where(
+            HireRequestRow.company_id == company_id, HireRequestRow.status == "pending"
+        )
+    ):
         items.append(
             InboxItem(kind="hire", ref_id=hire.id, title=f"{hire.name} ({hire.role})",
                       detail=hire.reason or "Hire request pending approval")
         )
     failed_task_ids = set()
-    for run in db.scalars(select(RunRow).where(RunRow.status == "failed").order_by(RunRow.id.desc())):
+    for run in db.scalars(
+        select(RunRow)
+        .join(TaskRow, TaskRow.id == RunRow.task_id)
+        .where(RunRow.status == "failed", TaskRow.company_id == company_id)
+        .order_by(RunRow.id.desc())
+    ):
         task = db.get(TaskRow, run.task_id)
         if task is None or task.status == "done" or task.id in failed_task_ids:
             continue
@@ -64,7 +85,11 @@ def inbox(db: Session = Depends(get_db)):
                           detail=f"Last run failed: {latest.error[:160]}")
             )
     for task in db.scalars(
-        select(TaskRow).where(TaskRow.agent_id.is_(None), TaskRow.status.in_(("todo", "in_progress")))
+        select(TaskRow).where(
+            TaskRow.company_id == company_id,
+            TaskRow.agent_id.is_(None),
+            TaskRow.status.in_(("todo", "in_progress")),
+        )
     ):
         items.append(
             InboxItem(kind="unassigned", ref_id=task.id, title=task.title,
@@ -74,10 +99,14 @@ def inbox(db: Session = Depends(get_db)):
 
 
 @router.get("/work-products", response_model=list[WorkProductOut])
-def work_products(db: Session = Depends(get_db)):
+def work_products(
+    db: Session = Depends(get_db), company_id: int = Depends(current_company_id)
+):
     products = []
     for task in db.scalars(
-        select(TaskRow).where(TaskRow.status == "done").order_by(TaskRow.id.desc())
+        select(TaskRow)
+        .where(TaskRow.company_id == company_id, TaskRow.status == "done")
+        .order_by(TaskRow.id.desc())
     ):
         run = db.scalars(
             select(RunRow)

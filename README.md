@@ -13,7 +13,8 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 
 ## The magic: describe your company, watch it work
 
-1. **Onboarding** — tell PaperCrew your company name, mission and first goal. The CEO designs the team, hires the right agents, **distributes tailored skills to each one**, and plans the first project.
+0. **Many companies, at once** — create as many companies as you like. Each owns its crew, goals, board and history, and every one runs its own autopilot **in parallel**. Switch between them from the sidebar; archive one to put it to sleep without losing anything.
+1. **Onboarding** — tell PaperCrew a company name, mission and first goal. The CEO designs the team, hires the right agents, **distributes tailored skills to each one**, and plans the first project.
 2. **Autopilot** — agents don't run one prompt and die. For every active goal the autopilot continuously: runs the next ready task → auto-approves results (CEO sign-off) → retries failures with feedback → **plans complementary tasks** when a cycle completes → and only stops when the goal is achieved (or you pause it). Every action is visible in the activity feed.
 3. **Self-optimization** — every run passes through the native token optimizer, failed work is retried with the error fed back, and skills sharpen each agent's prompts.
 
@@ -31,6 +32,7 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 
 | Feature | How it works |
 |---|---|
+| **Multi-company** | Run several companies side by side — isolated crews, goals, boards, chats and costs; sidebar switcher, per-company model override and budget, archive/restore |
 | **Company onboarding** | One form → CEO builds the team, distributes skills, creates the first goal and plans the onboarding project |
 | **Goals + Autopilot** | Progress-tracked goals; the autopilot works each active goal to completion autonomously (pause/resume anytime) |
 | **Skills** | Per-agent skills stored, injected into CrewAI prompts, distributed at onboarding and generatable per agent |
@@ -60,34 +62,40 @@ The dashboard shows **tokens saved** by the optimizer next to total token usage 
 
 ## Screenshots
 
-| Onboarding — describe your company | Company built: team + skills + first goal |
+| Onboarding — describe a company | Company built: team + skills + first goal |
 |---|---|
 | ![Onboarding](docs/evidence/01-onboarding.png) | ![Company ready](docs/evidence/02-company-ready.png) |
 
-| Autopilot working the goal | Goal achieved autonomously (7/7 tasks) |
+| Autopilot working, live toasts | Sidebar company switcher |
 |---|---|
-| ![Autopilot](docs/evidence/03-goals-autopilot.png) | ![Achieved](docs/evidence/04-goal-achieved.png) |
+| ![Autopilot](docs/evidence/03-goals-live-toast.png) | ![Switcher](docs/evidence/04-company-switcher.png) |
+
+| Two companies running in parallel | Both goals achieved autonomously |
+|---|---|
+| ![Parallel](docs/evidence/05-companies-parallel.png) | ![Achieved](docs/evidence/06-companies-achieved.png) |
 
 | Dashboard (activity, tokens, cost) | Agents with distributed skills |
 |---|---|
-| ![Dashboard](docs/evidence/05-dashboard.png) | ![Agents](docs/evidence/06-agents-skills.png) |
-
-| Board (all tasks created by autopilot) | Deliverables produced autonomously |
-|---|---|
-| ![Board](docs/evidence/07-board.png) | ![Deliverables](docs/evidence/09-deliverables.png) |
+| ![Dashboard](docs/evidence/08-dashboard.png) | ![Agents](docs/evidence/09-agents-skills.png) |
 
 ## Architecture
 
 ```
 frontend (React + Vite + TS, port 5173)
-   │  /api proxy
+   │  /api proxy, X-Company-Id header selects the active company
    ▼
 backend (FastAPI, port 8000)
-   ├─ SQLite (agents, tasks, runs, comments, routines, events, chat, settings)
-   ├─ scheduler ──► fires routines on schedule
+   ├─ SQLite — companies own agents, tasks, goals, plans, routines,
+   │           hires, chat and events (runs/comments/skills inherit)
+   ├─ scheduler ──► fires each company's routines on schedule
+   ├─ autopilot ──► works every active goal of every live company, in parallel
    ├─ ceo ────────► chat objective → JSON plan → delegated tasks
    └─ crew_runner ─► token_optimizer ─► CrewAI crew ─► OpenRouter (free default)
 ```
+
+Requests carry the active company in the `X-Company-Id` header (a `company_id`
+query param also works). Omit it and the API falls back to your first company,
+so single-company setups and plain `curl` calls need no extra ceremony.
 
 ## Quick start
 
@@ -121,13 +129,16 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 
 | Setting | Where | Default |
 |---|---|---|
-| OpenRouter API key | Settings page (or `OPENROUTER_API_KEY` env) | — |
-| Default model | Settings page | `meta-llama/llama-3.3-70b-instruct:free` |
-| Per-agent model | Agent form, "Model override" | inherits default |
-| Company name | Settings page | PaperCrew Inc. |
-| Price per 1k tokens | Settings page (cost tracking) | 0 (free models) |
+| OpenRouter API key | Settings page (or `OPENROUTER_API_KEY` env) — global | — |
+| Default model | Settings page — global | `meta-llama/llama-3.3-70b-instruct:free` |
+| Price per 1k tokens | Settings page — global | 0 (free models) |
+| Company name / mission | Companies page → Edit | set at creation |
+| Per-company model override | Companies page → Edit | inherits global default |
+| Per-company budget cap | Companies page → Edit | 0 (unlimited) |
+| Per-agent model | Agent form, "Model override" | inherits company/global |
 | Demo mode | `PAPERCREW_FAKE_LLM=1` env | off |
 | Scheduler | `PAPERCREW_SCHEDULER=0` to disable | on |
+| Autopilot | `PAPERCREW_AUTOPILOT=0` to disable | on |
 | DB path | `PAPERCREW_DB` env | `backend/papercrew.db` |
 
 ## Tests
@@ -136,7 +147,7 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 cd backend && ../.venv/Scripts/python -m pytest tests/ -v
 ```
 
-**32 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (onboarding builds the company with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
+**37 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (company creation builds the crew with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume), multi-company tests (**data isolation, blocked cross-company access, two autopilots reaching their goals in parallel**, archive/restore) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
 
 ## Roadmap / contributing
 

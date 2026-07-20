@@ -1,16 +1,20 @@
-"""PaperCrew API — Paperclip-style control plane, CrewAI-powered backend."""
+"""PaperCrew API — Paperclip-style control plane, CrewAI-powered backend.
+
+Multi-company: every company owns its crew, goals and history, and their
+autopilots run side by side.
+"""
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-import os
-
 from .autopilot import start_autopilot
-from .db import AgentRow, SessionLocal, init_db
+from .db import AgentRow, CompanyRow, SessionLocal, init_db
 from .routers import (
     agents,
     chat,
-    company,
+    companies,
     config,
     goals,
     hires,
@@ -63,28 +67,34 @@ SEED_AGENTS = [
 
 
 def seed_if_empty() -> None:
-    """Demo/test seeding only — real companies are built via /api/company/onboard."""
+    """Demo/test seeding only — real companies are built via POST /api/companies."""
     if os.getenv("PAPERCREW_SEED", "0") != "1":
         return
     db = SessionLocal()
     try:
-        if db.scalars(select(AgentRow)).first() is None:
-            for spec in SEED_AGENTS:
-                db.add(AgentRow(**spec))
-            db.commit()
+        if db.scalars(select(CompanyRow)).first() is not None:
+            return
+        company = CompanyRow(name="Demo Co", mission="Seeded demo company")
+        db.add(company)
+        db.flush()
+        for spec in SEED_AGENTS:
+            db.add(AgentRow(company_id=company.id, **spec))
+        db.commit()
     finally:
         db.close()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="PaperCrew", version="0.2.0")
+    app = FastAPI(title="PaperCrew", version="0.6.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for module in (agents, tasks, runs, routines, chat, hires, plans, goals, company, meta, config):
+    for module in (
+        companies, agents, tasks, runs, routines, chat, hires, plans, goals, meta, config
+    ):
         app.include_router(module.router)
 
     @app.get("/api/health")

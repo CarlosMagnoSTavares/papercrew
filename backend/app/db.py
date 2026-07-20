@@ -1,9 +1,14 @@
-"""Database setup and ORM models (SQLite + SQLAlchemy 2.0)."""
+"""Database setup and ORM models (SQLite + SQLAlchemy 2.0).
+
+Everything a company owns (agents, tasks, goals, plans, routines, hires, chat,
+events) carries a company_id so several companies can run side by side.
+Runs, comments and skills inherit their company through their parent row.
+"""
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import Float, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 DB_PATH = os.getenv(
@@ -21,10 +26,23 @@ class Base(DeclarativeBase):
     pass
 
 
+class CompanyRow(Base):
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    mission: Mapped[str] = mapped_column(Text, default="")
+    default_model: Mapped[str] = mapped_column(String(200), default="")
+    monthly_budget: Mapped[float] = mapped_column(Float, default=0.0)
+    archived: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+
+
 class AgentRow(Base):
     __tablename__ = "agents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     name: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(200))
     goal: Mapped[str] = mapped_column(Text, default="")
@@ -39,6 +57,7 @@ class TaskRow(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     expected_output: Mapped[str] = mapped_column(Text, default="")
@@ -84,6 +103,7 @@ class RoutineRow(Base):
     __tablename__ = "routines"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
@@ -108,6 +128,7 @@ class GoalRow(Base):
     __tablename__ = "goals"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="active")  # active|achieved|paused
@@ -121,6 +142,7 @@ class HireRequestRow(Base):
     __tablename__ = "hire_requests"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     name: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(200))
     goal: Mapped[str] = mapped_column(Text, default="")
@@ -136,6 +158,7 @@ class PlanRow(Base):
     __tablename__ = "plans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     title: Mapped[str] = mapped_column(String(200))
     objective: Mapped[str] = mapped_column(Text, default="")
     content: Mapped[str] = mapped_column(Text, default="")
@@ -147,6 +170,7 @@ class EventRow(Base):
     __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     kind: Mapped[str] = mapped_column(String(40))
     message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
@@ -156,24 +180,77 @@ class ChatMessageRow(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), default=0)
     role: Mapped[str] = mapped_column(String(20))  # user|ceo
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
 
 
 class SettingRow(Base):
+    """Global settings shared by every company (OpenRouter key, default model)."""
+
     __tablename__ = "settings"
 
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
 
 
-def add_event(db, kind: str, message: str) -> None:
-    db.add(EventRow(kind=kind, message=message))
+def add_event(db, kind: str, message: str, company_id: int = 0) -> None:
+    db.add(EventRow(kind=kind, message=message, company_id=company_id))
+
+
+# --- schema upkeep ----------------------------------------------------------
+
+SCOPED_TABLES = (
+    "agents", "tasks", "goals", "plans", "routines",
+    "hire_requests", "events", "chat_messages",
+)
+
+
+def _migrate() -> None:
+    """Add company_id to installs created before multi-company support and
+    adopt their orphan rows into a company built from the old settings."""
+    with engine.begin() as conn:
+        existing = {
+            row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        adopted_any = False
+        for table in SCOPED_TABLES:
+            if table not in existing:
+                continue
+            columns = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if "company_id" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN company_id INTEGER DEFAULT 0"))
+                adopted_any = True
+
+        if not adopted_any or "companies" not in existing:
+            return
+        orphans = conn.execute(text("SELECT COUNT(*) FROM agents WHERE company_id = 0")).scalar()
+        if not orphans:
+            return
+        name = conn.execute(
+            text("SELECT value FROM settings WHERE key = 'company_name'")
+        ).scalar() or "My Company"
+        mission = conn.execute(
+            text("SELECT value FROM settings WHERE key = 'company_mission'")
+        ).scalar() or ""
+        conn.execute(
+            text("INSERT INTO companies (name, mission, default_model, monthly_budget, "
+                 "archived, created_at) VALUES (:n, :m, '', 0, 0, :t)"),
+            {"n": name, "m": mission, "t": utcnow()},
+        )
+        company_id = conn.execute(text("SELECT last_insert_rowid()")).scalar()
+        for table in SCOPED_TABLES:
+            if table in existing:
+                conn.execute(
+                    text(f"UPDATE {table} SET company_id = :cid WHERE company_id = 0"),
+                    {"cid": company_id},
+                )
 
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _migrate()
 
 
 def get_db():

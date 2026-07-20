@@ -1,5 +1,8 @@
 """CEO brain: chat objectives → plans → delegated tasks, plus plan documents.
 
+All lookups are company-scoped: a CEO only ever sees and delegates to the crew
+of its own company.
+
 Fake mode is deterministic (demo/CI). Real mode asks the CEO agent via the
 OpenRouter LLM. When a plan step needs a specialty no agent covers, the CEO
 files a pending hire request instead of silently mis-assigning (governance).
@@ -13,6 +16,7 @@ from .crew_runner import DEFAULT_MODEL, fake_llm_enabled, get_setting
 from .db import (
     AgentRow,
     ChatMessageRow,
+    CompanyRow,
     HireRequestRow,
     PlanRow,
     SessionLocal,
@@ -29,9 +33,11 @@ PLAN_PROMPT = (
 )
 
 
-def match_agent(db, specialty: str) -> tuple[AgentRow | None, bool]:
-    """Best-fit worker for a specialty. Returns (agent, exact_match)."""
-    agents = db.scalars(select(AgentRow).order_by(AgentRow.id)).all()
+def match_agent(db, specialty: str, company_id: int) -> tuple[AgentRow | None, bool]:
+    """Best-fit worker inside this company. Returns (agent, exact_match)."""
+    agents = db.scalars(
+        select(AgentRow).where(AgentRow.company_id == company_id).order_by(AgentRow.id)
+    ).all()
     workers = [a for a in agents if not a.is_ceo] or agents
     needle = (specialty or "general").lower()
     for agent in workers:
@@ -41,19 +47,22 @@ def match_agent(db, specialty: str) -> tuple[AgentRow | None, bool]:
     return (workers[0] if workers else None), False
 
 
-def _maybe_request_hire(db, specialty: str) -> bool:
-    """File a pending hire request for an uncovered specialty (once)."""
+def _maybe_request_hire(db, specialty: str, company_id: int) -> bool:
+    """File a pending hire request for an uncovered specialty (once per company)."""
     if not specialty or specialty == "general":
         return False
     existing = db.scalars(
         select(HireRequestRow).where(
-            HireRequestRow.specialty == specialty, HireRequestRow.status == "pending"
+            HireRequestRow.company_id == company_id,
+            HireRequestRow.specialty == specialty,
+            HireRequestRow.status == "pending",
         )
     ).first()
     if existing:
         return False
     db.add(
         HireRequestRow(
+            company_id=company_id,
             name=f"New {specialty.title()} Specialist",
             role=f"{specialty.title()} Specialist",
             goal=f"Own all {specialty} work with high quality",
@@ -61,7 +70,7 @@ def _maybe_request_hire(db, specialty: str) -> bool:
             reason=f"CEO: no current agent covers the '{specialty}' specialty.",
         )
     )
-    add_event(db, "hire", f"CEO requested a hire for specialty '{specialty}'")
+    add_event(db, "hire", f"CEO requested a hire for specialty '{specialty}'", company_id)
     return True
 
 
@@ -86,13 +95,18 @@ def _fake_steps(objective: str) -> list[dict]:
     ]
 
 
-def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
+def _llm_call(prompt: str, max_tokens: int = 1024, company_id: int = 0) -> str:
     from crewai import LLM
 
     db = SessionLocal()
     try:
         api_key = get_setting(db, "openrouter_api_key")
-        model = get_setting(db, "default_model", DEFAULT_MODEL)
+        company = db.get(CompanyRow, company_id) if company_id else None
+        model = (
+            (company.default_model if company and company.default_model else "")
+            or get_setting(db, "default_model", "")
+            or DEFAULT_MODEL
+        )
     finally:
         db.close()
     if not api_key:
@@ -102,8 +116,8 @@ def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
     return str(llm.call(prompt))
 
 
-def _llm_steps(objective: str) -> list[dict]:
-    raw = _llm_call(PLAN_PROMPT.format(objective=objective))
+def _llm_steps(objective: str, company_id: int) -> list[dict]:
+    raw = _llm_call(PLAN_PROMPT.format(objective=objective), company_id=company_id)
     match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not match:
         raise RuntimeError(f"CEO returned no JSON plan: {raw:.300}")
@@ -111,20 +125,23 @@ def _llm_steps(objective: str) -> list[dict]:
     return [p for p in plan if isinstance(p, dict) and p.get("title")][:4]
 
 
-def build_steps(objective: str) -> list[dict]:
-    return _fake_steps(objective) if fake_llm_enabled() else _llm_steps(objective)
+def build_steps(objective: str, company_id: int = 0) -> list[dict]:
+    return _fake_steps(objective) if fake_llm_enabled() else _llm_steps(objective, company_id)
 
 
-def create_tasks_from_steps(db, steps: list[dict], priority: str = "medium") -> tuple[list[dict], int]:
+def create_tasks_from_steps(
+    db, steps: list[dict], company_id: int, priority: str = "medium"
+) -> tuple[list[dict], int]:
     """Create dependency-chained tasks; file hires for uncovered specialties."""
     created, hires = [], 0
     previous_id: int | None = None
     for step in steps:
         specialty = step.get("specialty", "")
-        agent, exact = match_agent(db, specialty)
-        if not exact and _maybe_request_hire(db, specialty):
+        agent, exact = match_agent(db, specialty, company_id)
+        if not exact and _maybe_request_hire(db, specialty, company_id):
             hires += 1
         task = TaskRow(
+            company_id=company_id,
             title=step["title"][:200],
             description=step.get("description", ""),
             agent_id=agent.id if agent else None,
@@ -140,33 +157,33 @@ def create_tasks_from_steps(db, steps: list[dict], priority: str = "medium") -> 
     return created, hires
 
 
-def handle_message(message: str) -> dict:
+def handle_message(message: str, company_id: int) -> dict:
     db = SessionLocal()
     try:
-        db.add(ChatMessageRow(role="user", body=message))
+        db.add(ChatMessageRow(company_id=company_id, role="user", body=message))
         db.commit()
     finally:
         db.close()
 
-    steps = build_steps(message)
+    steps = build_steps(message, company_id)
 
     db = SessionLocal()
     try:
-        created, hires = create_tasks_from_steps(db, steps)
+        created, hires = create_tasks_from_steps(db, steps, company_id)
         lines = [f"Plan created — {len(created)} tasks, chained by dependency:"]
         lines += [f"• #{t['id']} {t['title']} → {t['agent']}" for t in created]
         if hires:
             lines.append(f"Also filed {hires} hire request(s) for uncovered specialties — see Inbox.")
         reply = "\n".join(lines)
-        db.add(ChatMessageRow(role="ceo", body=reply))
-        add_event(db, "plan", f"CEO planned {len(created)} tasks from chat objective")
+        db.add(ChatMessageRow(company_id=company_id, role="ceo", body=reply))
+        add_event(db, "plan", f"CEO planned {len(created)} tasks from chat objective", company_id)
         db.commit()
         return {"reply": reply, "tasks": created}
     finally:
         db.close()
 
 
-def draft_plan_content(title: str, objective: str) -> str:
+def draft_plan_content(title: str, objective: str, company_id: int = 0) -> str:
     """Markdown plan document. Deterministic in fake mode, LLM otherwise."""
     if fake_llm_enabled():
         steps = _fake_steps(objective)
@@ -182,6 +199,7 @@ def draft_plan_content(title: str, objective: str) -> str:
         f"Sections: Objective, Steps (numbered, each with a specialty tag), Risks.\n"
         f"Objective: {objective}" + TERSE_SUFFIX,
         max_tokens=1500,
+        company_id=company_id,
     )
 
 
@@ -192,10 +210,11 @@ def convert_plan(plan_id: int) -> list[dict]:
         plan = db.get(PlanRow, plan_id)
         if plan is None:
             raise ValueError("Plan not found")
-        steps = build_steps(plan.objective or plan.title)
-        created, _hires = create_tasks_from_steps(db, steps)
+        steps = build_steps(plan.objective or plan.title, plan.company_id)
+        created, _hires = create_tasks_from_steps(db, steps, plan.company_id)
         plan.status = "converted"
-        add_event(db, "plan", f"Plan '{plan.title}' converted into {len(created)} tasks")
+        add_event(db, "plan", f"Plan '{plan.title}' converted into {len(created)} tasks",
+                  plan.company_id)
         db.commit()
         return created
     finally:

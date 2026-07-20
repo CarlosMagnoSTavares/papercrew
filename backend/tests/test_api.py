@@ -166,14 +166,9 @@ def test_events_and_stats():
 def test_settings_roundtrip():
     updated = client.put(
         "/api/settings",
-        json={
-            "openrouter_api_key": "sk-test",
-            "default_model": "some/model:free",
-            "company_name": "Acme AI",
-        },
+        json={"openrouter_api_key": "sk-test", "default_model": "some/model:free"},
     )
     body = updated.json()
     assert body["openrouter_api_key_set"] is True
     assert body["default_model"] == "some/model:free"
-    assert body["company_name"] == "Acme AI"
     assert body["fake_llm"] is True

@@ -1,5 +1,8 @@
-"""Company onboarding: describe your company once — the CEO builds the team,
+"""Company creation: describe a company once — the CEO builds the team,
 distributes skills, creates the first goal and plans the onboarding project.
+
+Every artifact is scoped to the new company, so many companies coexist and
+run their autopilots side by side.
 
 Fake mode is deterministic; real mode asks the LLM for a tailored JSON plan.
 """
@@ -8,7 +11,7 @@ import re
 
 from .ceo import _llm_call, create_tasks_from_steps
 from .crew_runner import fake_llm_enabled
-from .db import AgentRow, GoalRow, SessionLocal, SettingRow, SkillRow, add_event
+from .db import AgentRow, CompanyRow, GoalRow, SessionLocal, SkillRow, TaskRow, add_event
 from .token_optimizer import TERSE_SUFFIX, compress_text
 
 ONBOARD_PROMPT = (
@@ -71,7 +74,7 @@ FAKE_TEAM = [
 ]
 
 
-def _fake_company_plan(name: str, mission: str, goal: str) -> dict:
+def _fake_company_plan(mission: str, goal: str) -> dict:
     topic = compress_text(goal or mission, 100)
     return {
         "agents": FAKE_TEAM,
@@ -99,20 +102,24 @@ def _llm_company_plan(name: str, mission: str, goal: str) -> dict:
     return json.loads(match.group(0))
 
 
-def onboard_company(name: str, mission: str, goal_title: str) -> dict:
-    """Create agents + skills + first goal + onboarding tasks. Idempotent guard
-    lives in the router (rejects if already onboarded)."""
+def create_company(name: str, mission: str, goal_title: str) -> dict:
+    """Create a company with its crew, skills, first goal and initial tasks."""
     plan = (
-        _fake_company_plan(name, mission, goal_title)
+        _fake_company_plan(mission, goal_title)
         if fake_llm_enabled()
         else _llm_company_plan(name, mission, goal_title)
     )
 
     db = SessionLocal()
     try:
+        company = CompanyRow(name=name[:120], mission=mission)
+        db.add(company)
+        db.flush()
+
         hired = []
         for i, spec in enumerate(plan.get("agents", [])[:6]):
             agent = AgentRow(
+                company_id=company.id,
                 name=spec.get("name", f"Agent {i+1}")[:120],
                 role=spec.get("role", "Specialist")[:200],
                 goal=spec.get("goal", ""),
@@ -130,32 +137,32 @@ def onboard_company(name: str, mission: str, goal_title: str) -> dict:
             hired.append({"id": agent.id, "name": agent.name, "role": agent.role,
                           "skills": skills})
 
-        goal = GoalRow(title=goal_title[:200] or f"First milestone for {name}",
-                       description=f"Mission: {mission}")
+        goal = GoalRow(
+            company_id=company.id,
+            title=goal_title[:200] or f"First milestone for {name}",
+            description=f"Mission: {mission}",
+        )
         db.add(goal)
         db.flush()
 
-        created, _ = create_tasks_from_steps(db, plan.get("initial_tasks", []), priority="high")
+        created, _ = create_tasks_from_steps(
+            db, plan.get("initial_tasks", []), company.id, priority="high"
+        )
         for task_info in created:
-            from .db import TaskRow
-
             task = db.get(TaskRow, task_info["id"])
             if task is not None:
                 task.goal_id = goal.id
 
-        for key, value in (("company_name", name), ("company_mission", mission),
-                           ("onboarded", "1")):
-            row = db.get(SettingRow, key)
-            if row is None:
-                db.add(SettingRow(key=key, value=value))
-            else:
-                row.value = value
-
         add_event(db, "company",
-                  f"Company '{name}' onboarded: {len(hired)} agents hired, "
-                  f"goal '{goal.title}' created with {len(created)} tasks")
+                  f"Company '{name}' created: {len(hired)} agents hired, "
+                  f"goal '{goal.title}' planned with {len(created)} tasks",
+                  company.id)
         db.commit()
-        return {"agents": hired, "goal": {"id": goal.id, "title": goal.title},
-                "tasks": created}
+        return {
+            "company": {"id": company.id, "name": company.name, "mission": company.mission},
+            "agents": hired,
+            "goal": {"id": goal.id, "title": goal.title},
+            "tasks": created,
+        }
     finally:
         db.close()

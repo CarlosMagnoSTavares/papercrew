@@ -16,7 +16,7 @@ import time
 
 from sqlalchemy import select
 
-from .db import CommentRow, GoalRow, RunRow, SessionLocal, TaskRow, add_event
+from .db import CommentRow, CompanyRow, GoalRow, RunRow, SessionLocal, TaskRow, add_event
 from .token_optimizer import compress_text
 
 TICK_INTERVAL_SECONDS = 10
@@ -57,7 +57,8 @@ def _auto_approve_reviews(db, goal: GoalRow, tasks: list[TaskRow]) -> int:
         task.feedback = ""
         db.add(CommentRow(task_id=task.id, author="Atlas (CEO)",
                           body="Auto-approved by autopilot ✔"))
-        add_event(db, "autopilot", f"Autopilot approved '{task.title}' (goal: {goal.title})")
+        add_event(db, "autopilot", f"Autopilot approved '{task.title}' (goal: {goal.title})",
+                  goal.company_id)
         approved += 1
     return approved
 
@@ -76,7 +77,8 @@ def _retry_failed(db, goal: GoalRow, tasks: list[TaskRow]) -> bool:
         if len(runs) >= MAX_ATTEMPTS_PER_TASK:
             continue
         task.feedback = f"Previous attempt failed: {compress_text(runs[0].error, 300)}"
-        add_event(db, "autopilot", f"Autopilot retrying failed task '{task.title}'")
+        add_event(db, "autopilot", f"Autopilot retrying failed task '{task.title}'",
+                  goal.company_id)
         db.commit()
         start_run(task.id)
         return True
@@ -91,7 +93,8 @@ def _start_next_runnable(db, goal: GoalRow, tasks: list[TaskRow]) -> bool:
             continue
         if not _deps_done(db, task):
             continue
-        add_event(db, "autopilot", f"Autopilot started '{task.title}' (goal: {goal.title})")
+        add_event(db, "autopilot", f"Autopilot started '{task.title}' (goal: {goal.title})",
+                  goal.company_id)
         db.commit()
         start_run(task.id)
         return True
@@ -125,6 +128,7 @@ def _llm_next_steps(db, goal: GoalRow, tasks: list[TaskRow]) -> tuple[bool, list
         'Is the goal achieved? Reply ONLY JSON: {"achieved": bool, '
         '"next_tasks": [{"title", "description", "specialty"}] (empty if achieved, max 3)}',
         max_tokens=800,
+        company_id=goal.company_id,
     )
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
@@ -150,11 +154,11 @@ def _evaluate_goal(db, goal: GoalRow, tasks: list[TaskRow]) -> None:
     if achieved:
         goal.status = "achieved"
         goal.progress = 100
-        add_event(db, "goal", f"🎯 Goal achieved: {goal.title}")
+        add_event(db, "goal", f"🎯 Goal achieved: {goal.title}", goal.company_id)
         db.commit()
         return
 
-    created, _ = create_tasks_from_steps(db, steps, priority="high")
+    created, _ = create_tasks_from_steps(db, steps, goal.company_id, priority="high")
     for info in created:
         task = db.get(TaskRow, info["id"])
         if task is not None:
@@ -164,6 +168,7 @@ def _evaluate_goal(db, goal: GoalRow, tasks: list[TaskRow]) -> None:
         db, "autopilot",
         f"Autopilot planned {len(created)} complementary tasks for '{goal.title}' "
         f"(cycle {goal.cycle})",
+        goal.company_id,
     )
     db.commit()
 
@@ -172,14 +177,15 @@ def _plan_initial_tasks(db, goal: GoalRow) -> None:
     """A goal without tasks gets its first plan from the CEO."""
     from .ceo import build_steps, create_tasks_from_steps
 
-    steps = build_steps(f"{goal.title}. {goal.description}".strip())
-    created, _ = create_tasks_from_steps(db, steps, priority="high")
+    steps = build_steps(f"{goal.title}. {goal.description}".strip(), goal.company_id)
+    created, _ = create_tasks_from_steps(db, steps, goal.company_id, priority="high")
     for info in created:
         task = db.get(TaskRow, info["id"])
         if task is not None:
             task.goal_id = goal.id
     add_event(db, "autopilot",
-              f"Autopilot planned {len(created)} initial tasks for '{goal.title}'")
+              f"Autopilot planned {len(created)} initial tasks for '{goal.title}'",
+              goal.company_id)
     db.commit()
 
 
@@ -192,12 +198,19 @@ def _update_progress(goal: GoalRow, tasks: list[TaskRow]) -> None:
 
 
 def autopilot_tick() -> int:
-    """One pass over all active goals. Returns number of actions taken."""
+    """One pass over every active goal of every live company (they run in
+    parallel — each company's crew works its own goals). Returns actions taken."""
     actions = 0
     db = SessionLocal()
     try:
         goals = db.scalars(
-            select(GoalRow).where(GoalRow.status == "active", GoalRow.autopilot == 1)
+            select(GoalRow)
+            .join(CompanyRow, CompanyRow.id == GoalRow.company_id)
+            .where(
+                GoalRow.status == "active",
+                GoalRow.autopilot == 1,
+                CompanyRow.archived == 0,
+            )
         ).all()
         for goal in goals:
             tasks = _goal_tasks(db, goal.id)

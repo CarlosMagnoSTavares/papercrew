@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from .db import RoutineRow, SessionLocal, TaskRow, add_event
+from .db import CompanyRow, RoutineRow, SessionLocal, TaskRow, add_event
 
 CHECK_INTERVAL_SECONDS = 15
 
@@ -28,11 +28,16 @@ def fire_due_routines() -> int:
     fired = 0
     db = SessionLocal()
     try:
-        routines = db.scalars(select(RoutineRow).where(RoutineRow.enabled == 1)).all()
+        routines = db.scalars(
+            select(RoutineRow)
+            .join(CompanyRow, CompanyRow.id == RoutineRow.company_id)
+            .where(RoutineRow.enabled == 1, CompanyRow.archived == 0)
+        ).all()
         for routine in routines:
             if not _due(routine, now):
                 continue
             task = TaskRow(
+                company_id=routine.company_id,
                 title=f"[routine] {routine.title}",
                 description=routine.description,
                 agent_id=routine.agent_id,
@@ -42,7 +47,8 @@ def fire_due_routines() -> int:
             routine.next_run_at = (
                 now + timedelta(minutes=routine.interval_minutes)
             ).isoformat()
-            add_event(db, "routine", f"Routine '{routine.title}' fired → task #{task.id}")
+            add_event(db, "routine", f"Routine '{routine.title}' fired → task #{task.id}",
+                      routine.company_id)
             db.commit()
             fired += 1
             if routine.auto_run and routine.agent_id:
