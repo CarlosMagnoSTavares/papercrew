@@ -44,4 +44,4 @@ tests/test_optimizer.py::test_build_context_empty_without_deps PASSED    [100%]
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================= 32 passed, 1 warning in 15.63s ========================
+======================= 32 passed, 1 warning in 16.47s ========================

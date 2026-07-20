@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Agent, Routine } from '../api'
+import { EmptyState, useToast } from '../ui'
 
 const EMPTY = { title: '', description: '', agent_id: '', interval_minutes: 60 }
 
@@ -8,6 +9,7 @@ export default function Routines() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
+  const toast = useToast()
 
   const refresh = () => api.routines.list().then(setRoutines).catch(console.error)
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function Routines() {
     })
     setForm(EMPTY)
     setShowForm(false)
+    toast('success', `Routine created: ${form.title}`)
     refresh()
   }
 
@@ -76,7 +79,18 @@ export default function Routines() {
             </div>
           )
         })}
-        {routines.length === 0 && <p className="muted">No routines yet.</p>}
+        {routines.length === 0 && (
+          <EmptyState
+            icon="↻"
+            title="No routines yet"
+            hint="Set up recurring work — a routine fires a task automatically on schedule."
+            action={
+              <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+                + New routine
+              </button>
+            }
+          />
+        )}
       </div>
 
       {showForm && (

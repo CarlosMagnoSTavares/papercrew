@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Agent, AgentStats, Skill } from '../api'
+import { useToast } from '../ui'
 
 const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '', specialty: '' }
 
@@ -10,6 +11,7 @@ export default function Agents() {
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
   const [stats, setStats] = useState<{ agent: Agent; data: AgentStats } | null>(null)
+  const toast = useToast()
 
   const showStats = async (agent: Agent) => {
     const data = await api.agents.stats(agent.id)
@@ -31,7 +33,11 @@ export default function Agents() {
   }, [])
 
   const generateSkills = async (agent: Agent) => {
-    await api.agents.generateSkills(agent.id)
+    const created = await api.agents.generateSkills(agent.id)
+    toast(
+      created.length ? 'success' : 'info',
+      created.length ? `${agent.name} gained ${created.length} new skill(s)` : `${agent.name} already has these skills`,
+    )
     refresh()
   }
 
@@ -60,6 +66,7 @@ export default function Agents() {
     try {
       if (editing) await api.agents.update(editing.id, form)
       else await api.agents.create(form)
+      toast('success', editing ? `Updated ${form.name}` : `Hired ${form.name}`)
       setShowForm(false)
       refresh()
     } catch (err) {
@@ -70,6 +77,7 @@ export default function Agents() {
   const remove = async (agent: Agent) => {
     if (!confirm(`Delete agent "${agent.name}"?`)) return
     await api.agents.remove(agent.id)
+    toast('info', `${agent.name} left the company`)
     refresh()
   }
 

@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Goal, Task } from '../api'
+import { EmptyState, useToast } from '../ui'
 
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [tasksByGoal, setTasksByGoal] = useState<Record<number, Task[]>>({})
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title: '', description: '' })
+  const toast = useToast()
 
   const refresh = async () => {
     const list = await api.goals.list()
@@ -27,6 +29,7 @@ export default function Goals() {
     await api.goals.create(form)
     setForm({ title: '', description: '' })
     setShowForm(false)
+    toast('success', `Goal created: ${form.title} — autopilot will start planning`)
     refresh()
   }
 
@@ -45,7 +48,18 @@ export default function Goals() {
         </button>
       </div>
 
-      {goals.length === 0 && <p className="muted">No goals yet.</p>}
+      {goals.length === 0 && (
+        <EmptyState
+          icon="🎯"
+          title="No goals yet"
+          hint="Create a goal and the autopilot will plan and work toward it on its own."
+          action={
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+              + New goal
+            </button>
+          }
+        />
+      )}
       <div className="goal-list">
         {goals.map((goal) => {
           const tasks = tasksByGoal[goal.id] ?? []

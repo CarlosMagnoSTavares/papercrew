@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, AppEvent, Goal, Run, Stats, Task } from '../api'
+import { EmptyState, timeAgo } from '../ui'
 
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -58,7 +59,9 @@ export default function Dashboard() {
       <div className="two-col">
         <section>
           <h2>Recent runs</h2>
-          {runs.length === 0 && <p className="muted">No runs yet. Run a task from the board.</p>}
+          {runs.length === 0 && (
+            <EmptyState icon="▶" title="No runs yet" hint="Run a task from the board to see it here." />
+          )}
           <div className="run-list">
             {runs.slice(0, 8).map((run) => {
               const task = tasks.find((t) => t.id === run.task_id)
@@ -82,10 +85,14 @@ export default function Dashboard() {
               <div key={e.id} className="feed-row">
                 <span className={`dot dot-${e.kind}`} />
                 <span>{e.message}</span>
-                <span className="muted small">{new Date(e.created_at).toLocaleTimeString()}</span>
+                <span className="muted small" title={new Date(e.created_at).toLocaleString()}>
+                  {timeAgo(e.created_at)}
+                </span>
               </div>
             ))}
-            {events.length === 0 && <p className="muted">No activity yet.</p>}
+            {events.length === 0 && (
+              <EmptyState icon="◈" title="No activity yet" hint="Actions across your company show up here." />
+            )}
           </div>
         </section>
       </div>

@@ -221,3 +221,50 @@ h4 { margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
 .goal-task-done { border-color: var(--ok); color: var(--ok); }
 .goal-task-in_progress { border-color: var(--warn); color: var(--warn); }
 .goal-banner { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; }
+
+/* Toasts */
+.toast-stack { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: 360px; }
+.toast { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); animation: toast-in 0.2s ease; }
+.toast-success { border-left-color: var(--ok); }
+.toast-error { border-left-color: var(--danger); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Spinner */
+.spinner-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty states */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; padding: 60px 20px; background: var(--panel); border: 1px dashed var(--border); border-radius: 14px; margin-bottom: 20px; }
+.empty-icon { font-size: 32px; opacity: 0.6; }
+.empty-state h3 { font-size: 16px; }
+.empty-state .btn { margin-top: 8px; }
+
+/* Suggestion chips */
+.chip-suggest { cursor: pointer; background: var(--panel-2); }
+.chip-suggest:hover { border-color: var(--accent); color: var(--accent); }
+.chat-suggestions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.self-start { align-self: flex-start; }
+
+/* Sidebar goal widget */
+.sidebar-goal { display: flex; flex-direction: column; gap: 6px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 4px 8px 12px; cursor: pointer; text-align: left; color: var(--text); }
+.sidebar-goal:hover { border-color: var(--accent); }
+
+/* General polish: transitions + focus rings */
+.btn, .nav-item, .task-card, .agent-card, .plan-item, .run-row, .goal-card, .chip { transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease; }
+.task-card:active { transform: scale(0.99); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+/* Responsive sidebar */
+@media (max-width: 900px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px; gap: 8px; }
+  .sidebar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+  .sidebar-footer, .company-name, .sidebar-goal { display: none; }
+  .content { padding: 20px; }
+  .board { grid-template-columns: 1fr; }
+  .plans-layout { grid-template-columns: 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+}

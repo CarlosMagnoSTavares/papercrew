@@ -17,6 +17,16 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 2. **Autopilot** — agents don't run one prompt and die. For every active goal the autopilot continuously: runs the next ready task → auto-approves results (CEO sign-off) → retries failures with feedback → **plans complementary tasks** when a cycle completes → and only stops when the goal is achieved (or you pause it). Every action is visible in the activity feed.
 3. **Self-optimization** — every run passes through the native token optimizer, failed work is retried with the error fed back, and skills sharpen each agent's prompts.
 
+## UX
+
+- **Live toasts** — autopilot, goal and hiring events surface as toasts anywhere in the app, not just on the page that triggered them
+- **Sidebar goal widget** — the active goal's progress bar follows you across every page, one click jumps to Goals
+- **Empty states everywhere** — every list explains what it's for and offers the action to fill it, instead of a blank page
+- **Relative timestamps** — "3m ago" / "just now" on runs and activity, full timestamp on hover
+- **Inline feedback** — spinners on long-running actions (CEO planning, crew runs), success/error toasts on every mutation, auto-scrolling run logs
+- **One-click example** on onboarding, suggestion chips on CEO chat, keyboard-friendly forms
+- **Responsive layout** — sidebar collapses to a top bar on narrow viewports
+
 ## Features
 
 | Feature | How it works |

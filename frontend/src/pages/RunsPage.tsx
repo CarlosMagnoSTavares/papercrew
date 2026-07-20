@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, Run, Task } from '../api'
+import { EmptyState, timeAgo } from '../ui'
 
 type Filter = 'all' | 'running' | 'completed' | 'failed'
 
@@ -44,10 +45,17 @@ export default function RunsPage() {
               {run.tokens_saved > 0 && ` · saved ${run.tokens_saved}`}
               {run.cost > 0 && ` · $${run.cost}`}
             </span>
-            <span className="muted small">{new Date(run.started_at).toLocaleString()}</span>
+            <span className="muted small" title={new Date(run.started_at).toLocaleString()}>
+              {timeAgo(run.started_at)}
+            </span>
           </div>
         ))}
-        {visible.length === 0 && <p className="muted">No runs match.</p>}
+        {visible.length === 0 && runs.length === 0 && (
+          <EmptyState icon="▶" title="No runs yet" hint="Run a task to see its history here." />
+        )}
+        {visible.length === 0 && runs.length > 0 && (
+          <p className="muted">No runs match this filter.</p>
+        )}
       </div>
 
       {open && (

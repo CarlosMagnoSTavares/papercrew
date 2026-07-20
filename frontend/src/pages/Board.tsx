@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Agent, Task } from '../api'
 import TaskDrawer from '../components/TaskDrawer'
+import { EmptyState, useToast } from '../ui'
 
 const COLUMNS: { id: Task['status']; label: string }[] = [
   { id: 'todo', label: 'To do' },
@@ -33,6 +34,7 @@ export default function Board({ openTaskId, onTaskOpened }: Props) {
     priority: 'medium',
     due_date: '',
   })
+  const toast = useToast()
 
   const refresh = () =>
     api.tasks.list().then((list) => {
@@ -43,6 +45,8 @@ export default function Board({ openTaskId, onTaskOpened }: Props) {
   useEffect(() => {
     refresh()
     api.agents.list().then(setAgents)
+    const timer = window.setInterval(() => refresh().catch(() => undefined), 4000)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -64,6 +68,7 @@ export default function Board({ openTaskId, onTaskOpened }: Props) {
       priority: form.priority as Task['priority'],
       due_date: form.due_date,
     })
+    toast('success', `Task created: ${form.title}`)
     setForm({ title: '', description: '', agent_id: '', priority: 'medium', due_date: '' })
     setShowForm(false)
     refresh()
@@ -73,8 +78,12 @@ export default function Board({ openTaskId, onTaskOpened }: Props) {
     e.preventDefault()
     const id = Number(e.dataTransfer.getData('text/task-id'))
     if (id) {
-      await api.tasks.patch(id, { status })
-      refresh()
+      try {
+        await api.tasks.patch(id, { status })
+        refresh()
+      } catch (err) {
+        toast('error', String(err))
+      }
     }
   }
 
@@ -93,6 +102,18 @@ export default function Board({ openTaskId, onTaskOpened }: Props) {
         </button>
       </div>
 
+      {tasks.length === 0 && (
+        <EmptyState
+          icon="▤"
+          title="No tasks yet"
+          hint="Create one here, ask the CEO in chat, or set a goal and let the autopilot plan."
+          action={
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+              + New task
+            </button>
+          }
+        />
+      )}
       <div className="board">
         {COLUMNS.map((col) => (
           <div

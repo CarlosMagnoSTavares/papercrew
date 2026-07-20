@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api } from './api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, Goal } from './api'
+import { useToast } from './ui'
 import Onboarding from './pages/Onboarding'
 import Goals from './pages/Goals'
 import Dashboard from './pages/Dashboard'
@@ -46,6 +47,9 @@ export default function App() {
   const [onboarded, setOnboarded] = useState<boolean | null>(null)
   const [inboxCount, setInboxCount] = useState(0)
   const [openTaskId, setOpenTaskId] = useState<number | null>(null)
+  const [activeGoal, setActiveGoal] = useState<Goal | null>(null)
+  const toast = useToast()
+  const lastEventId = useRef<number | null>(null)
 
   const refreshBadge = useCallback(() => {
     api.inbox()
@@ -65,6 +69,33 @@ export default function App() {
     const timer = window.setInterval(refreshBadge, 10000)
     return () => window.clearInterval(timer)
   }, [page, refreshBadge])
+
+  // Live company pulse: surface autopilot/goal/hire events as toasts,
+  // keep the sidebar goal widget fresh.
+  useEffect(() => {
+    const NOTIFY = new Set(['autopilot', 'goal', 'hire', 'company'])
+    const pulse = async () => {
+      try {
+        const [events, goals] = await Promise.all([api.events(), api.goals.list()])
+        setActiveGoal(goals.find((g) => g.status === 'active') ?? null)
+        if (lastEventId.current === null) {
+          lastEventId.current = events[0]?.id ?? 0
+          return
+        }
+        const fresh = events.filter((e) => e.id > (lastEventId.current ?? 0)).reverse()
+        lastEventId.current = events[0]?.id ?? lastEventId.current
+        for (const event of fresh.slice(-3)) {
+          if (!NOTIFY.has(event.kind)) continue
+          toast(event.message.startsWith('🎯') ? 'success' : 'info', event.message)
+        }
+      } catch {
+        /* backend briefly unreachable — skip this pulse */
+      }
+    }
+    pulse()
+    const timer = window.setInterval(pulse, 6000)
+    return () => window.clearInterval(timer)
+  }, [toast])
 
   if (onboarded === null) return null
   if (!onboarded) {
@@ -106,6 +137,15 @@ export default function App() {
             </button>
           ))}
         </nav>
+        {activeGoal && (
+          <button className="sidebar-goal" onClick={() => setPage('goals')}>
+            <span className="small">🎯 {activeGoal.title}</span>
+            <div className="progress-track slim">
+              <div className="progress-fill" style={{ width: `${activeGoal.progress}%` }} />
+            </div>
+            <span className="muted small">{activeGoal.progress}% · autopilot on</span>
+          </button>
+        )}
         <div className="sidebar-footer">
           CrewAI + OpenRouter
           <br />

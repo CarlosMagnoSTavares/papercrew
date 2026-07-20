@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, WorkProduct } from '../api'
+import { EmptyState } from '../ui'
 
 export default function WorkProducts() {
   const [products, setProducts] = useState<WorkProduct[]>([])
@@ -25,7 +26,11 @@ export default function WorkProducts() {
       <h1>Deliverables</h1>
       <p className="subtitle">Approved work products from your crew</p>
       {products.length === 0 && (
-        <p className="muted">Nothing approved yet — approve tasks in review to collect deliverables.</p>
+        <EmptyState
+          icon="⬡"
+          title="No deliverables yet"
+          hint="Approve a task in review to collect its output here."
+        />
       )}
       <div className="card-grid">
         {products.map((p) => (

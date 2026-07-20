@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Plan } from '../api'
+import { EmptyState, Spinner, useToast } from '../ui'
 
 export default function Plans() {
   const [plans, setPlans] = useState<Plan[]>([])
@@ -9,6 +10,7 @@ export default function Plans() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const toast = useToast()
 
   const refresh = () =>
     api.plans.list().then((list) => {
@@ -40,7 +42,9 @@ export default function Plans() {
     setError('')
     try {
       const res = await api.plans.convert(plan.id)
-      setNotice(`Converted into ${res.tasks.length} tasks → see Task Board`)
+      const msg = `Converted into ${res.tasks.length} tasks → see Task Board`
+      setNotice(msg)
+      toast('success', msg)
       setTimeout(() => setNotice(''), 4000)
       refresh()
     } catch (err) {
@@ -84,7 +88,18 @@ export default function Plans() {
               </span>
             </div>
           ))}
-          {plans.length === 0 && <p className="muted">No plans yet.</p>}
+          {plans.length === 0 && (
+            <EmptyState
+              icon="☰"
+              title="No plans yet"
+              hint="Draft one with the CEO, then convert it into tasks."
+              action={
+                <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+                  + New plan
+                </button>
+              }
+            />
+          )}
         </div>
         {selected && (
           <div className="plan-detail">
@@ -134,7 +149,7 @@ export default function Plans() {
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={busy}>
-                {busy ? 'CEO drafting…' : 'Draft with CEO'}
+                {busy ? <Spinner label="CEO drafting…" /> : 'Draft with CEO'}
               </button>
             </div>
           </form>

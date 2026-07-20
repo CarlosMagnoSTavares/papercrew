@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { api, ChatMessage } from '../api'
+import { Spinner } from '../ui'
 
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -7,9 +8,11 @@ export default function Chat() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     api.chat.history().then(setMessages).catch(console.error)
+    inputRef.current?.focus()
   }, [])
 
   useEffect(() => {
@@ -49,10 +52,21 @@ export default function Chat() {
       </p>
       <div className="chat-window">
         {messages.length === 0 && (
-          <p className="muted">
-            Try: "Launch a weekly newsletter about AI agents" — the CEO will break it into
-            dependency-chained tasks assigned by specialty.
-          </p>
+          <div className="chat-suggestions">
+            <p className="muted">
+              Give the CEO an objective — it plans, creates dependency-chained tasks and delegates
+              by specialty. Try one:
+            </p>
+            {[
+              'Launch a weekly newsletter about AI agents',
+              'Create a go-to-market plan for our new product',
+              'Research our top 5 competitors and summarize gaps',
+            ].map((s) => (
+              <button key={s} className="chip chip-suggest" onClick={() => setInput(s)}>
+                {s}
+              </button>
+            ))}
+          </div>
         )}
         {messages.map((m) => (
           <div key={m.id} className={`chat-msg ${m.role}`}>
@@ -60,17 +74,25 @@ export default function Chat() {
             <pre className="chat-body">{m.body}</pre>
           </div>
         ))}
-        {busy && <div className="muted">CEO is planning…</div>}
+        {busy && (
+          <div className="chat-msg ceo">
+            <div className="chat-author">📎 Atlas (CEO)</div>
+            <div className="chat-body">
+              <Spinner label="planning…" />
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
       {error && <div className="error">{error}</div>}
       <form className="chat-input" onSubmit={send}>
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Describe an objective for your company…"
         />
-        <button className="btn btn-primary" disabled={busy}>
+        <button className="btn btn-primary" disabled={busy || !input.trim()}>
           Send
         </button>
       </form>

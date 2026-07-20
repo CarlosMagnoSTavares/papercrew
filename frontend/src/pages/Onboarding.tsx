@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { api, OnboardResult } from '../api'
+import { Spinner } from '../ui'
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({ company_name: '', mission: '', first_goal: '' })
@@ -73,6 +74,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           your first goal and puts the whole crew to work — autonomously.
         </p>
         {error && <div className="error">{error}</div>}
+        <button
+          type="button"
+          className="chip chip-suggest self-start"
+          onClick={() =>
+            setForm({
+              company_name: 'Nimbus Media',
+              mission:
+                'We help small brands grow with AI-generated content, campaigns and market research.',
+              first_goal: 'Launch the first client campaign',
+            })
+          }
+        >
+          ✨ Fill with an example
+        </button>
         <label>
           Company name
           <input
@@ -102,7 +117,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           />
         </label>
         <button className="btn btn-primary btn-big" disabled={busy}>
-          {busy ? 'CEO building your company…' : '🚀 Build my company'}
+          {busy ? <Spinner label="CEO building your company…" /> : '🚀 Build my company'}
         </button>
       </form>
     </div>

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, Settings } from '../api'
+import { useToast } from '../ui'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -10,6 +11,7 @@ export default function SettingsPage() {
   const [price, setPrice] = useState('0')
   const [budget, setBudget] = useState('0')
   const [saved, setSaved] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     api.settings.get().then((s) => {
@@ -35,6 +37,7 @@ export default function SettingsPage() {
     setSettings(updated)
     setApiKey('')
     setSaved(true)
+    toast('success', 'Settings saved')
     setTimeout(() => setSaved(false), 2500)
   }
 

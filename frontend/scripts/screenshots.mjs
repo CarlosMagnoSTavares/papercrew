@@ -18,34 +18,30 @@ const nav = async (label) => {
 const tick = () =>
   page.evaluate(() => fetch('/api/goals/tick', { method: 'POST' }).then((r) => r.json()))
 
-// 1. Onboarding wizard
+// 1. Onboarding wizard with the example-fill chip (UX: one-click demo data)
 await page.goto(BASE)
 await page.waitForSelector('.onboard-card')
-await page.fill('input[placeholder*="Nimbus"]', 'Nimbus Media')
-await page.fill(
-  'textarea',
-  'We help small brands grow with AI-generated content, campaigns and market research.',
-)
-await page.fill('input[placeholder*="campaign"]', 'Launch the first client campaign')
+await page.click('button:has-text("Fill with an example")')
 await shot('01-onboarding')
 await page.click('.btn-big')
 await page.waitForSelector('.onboard-agents', { timeout: 20000 })
 await shot('02-company-ready')
 
-// 2. Goals page — watch autopilot work
+// 2. Goals + sidebar live widget + toast from autopilot activity
 await page.click('button:has-text("Watch your company work")')
 await page.waitForSelector('.goal-card')
-for (let i = 0; i < 5; i++) {
-  await tick()
-  await page.waitForTimeout(1400)
-}
-await page.waitForTimeout(1000)
-await shot('03-goals-autopilot')
-
-// drive autopilot until the goal is achieved
-for (let i = 0; i < 40; i++) {
+await page.waitForSelector('.sidebar-goal', { timeout: 15000 })
+for (let i = 0; i < 3; i++) {
   await tick()
   await page.waitForTimeout(1200)
+}
+await page.waitForSelector('.toast', { timeout: 15000 })
+await shot('03-goals-live-toast')
+
+// drive autopilot to completion
+for (let i = 0; i < 40; i++) {
+  await tick()
+  await page.waitForTimeout(1000)
   const achieved = await page.evaluate(() =>
     fetch('/api/goals')
       .then((r) => r.json())
@@ -53,31 +49,38 @@ for (let i = 0; i < 40; i++) {
   )
   if (achieved) break
 }
-await page.waitForTimeout(2000)
+await page.waitForTimeout(1500)
 await shot('04-goal-achieved')
 
-// 3. Dashboard full of autopilot activity
-await nav('Dashboard')
-await page.waitForSelector('.feed-row')
-await shot('05-dashboard')
+// 3. Empty state — Routines page before any routine exists
+await nav('Routines')
+await page.waitForSelector('.empty-state')
+await shot('05-empty-state')
 
-// 4. Agents with distributed skills
-await nav('Agents')
-await page.waitForSelector('.skill-chips')
-await shot('06-agents-skills')
-
-// 5. Board, runs, deliverables produced autonomously
+// 4. Task drawer with spinner + optimizer + timeago
 await nav('Task Board')
 await page.waitForSelector('.task-card')
-await shot('07-board')
+const firstTitle = await page.$eval('.task-card .task-title', (el) => el.textContent)
+await page.click('.task-card')
+await page.waitForSelector('.drawer')
+await shot('06-task-drawer')
+await page.click('.drawer-header .btn-ghost')
+void firstTitle
 
-await nav('Run History')
-await page.waitForSelector('.run-row')
-await shot('08-runs')
+// 5. CEO chat with suggestion chips (empty state UX)
+await nav('CEO Chat')
+await page.waitForSelector('.chat-suggestions')
+await shot('07-chat-suggestions')
 
-await nav('Deliverables')
-await page.waitForSelector('.agent-card')
-await shot('09-deliverables')
+// 6. Agents with skill chips + generate button
+await nav('Agents')
+await page.waitForSelector('.skill-chips')
+await shot('08-agents-skills')
+
+// 7. Dashboard — goal banner + activity with relative time
+await nav('Dashboard')
+await page.waitForSelector('.feed-row')
+await shot('09-dashboard')
 
 await browser.close()
 console.log('Screenshots saved to', OUT)

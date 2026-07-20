@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { api, Agent, Comment, Run, Task } from '../api'
+import { Spinner, timeAgo, useToast } from '../ui'
 
 interface Props {
   task: Task
@@ -17,8 +18,14 @@ export default function TaskDrawer({ task, agents, allTasks, onClose, onChanged 
   const [showReject, setShowReject] = useState(false)
   const [error, setError] = useState('')
   const pollRef = useRef<number | null>(null)
+  const logRef = useRef<HTMLPreElement | null>(null)
+  const toast = useToast()
 
   const latest = runs[0]
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+  }, [latest?.log])
   const depIds = task.depends_on.split(',').filter(Boolean).map(Number)
 
   const loadAll = () => {
@@ -42,6 +49,12 @@ export default function TaskDrawer({ task, agents, allTasks, onClose, onChanged 
         if (updated.status !== 'running' && pollRef.current) {
           window.clearInterval(pollRef.current)
           pollRef.current = null
+          toast(
+            updated.status === 'completed' ? 'success' : 'error',
+            updated.status === 'completed'
+              ? `Run finished: ${task.title}`
+              : `Run failed: ${task.title}`,
+          )
           onChanged()
         }
       }, 1000)
@@ -200,7 +213,14 @@ export default function TaskDrawer({ task, agents, allTasks, onClose, onChanged 
           </button>
           {task.status === 'review' && (
             <>
-              <button className="btn btn-ok" onClick={() => act(() => api.tasks.approve(task.id))}>
+              <button
+                className="btn btn-ok"
+                onClick={() =>
+                  act(() => api.tasks.approve(task.id)).then(() =>
+                    toast('success', `Approved: ${task.title}`),
+                  )
+                }
+              >
                 ✔ Approve
               </button>
               <button className="btn btn-warn" onClick={() => setShowReject(!showReject)}>
@@ -229,13 +249,19 @@ export default function TaskDrawer({ task, agents, allTasks, onClose, onChanged 
           <div className="run-panel">
             <div className="run-panel-header">
               Latest run <span className={`badge badge-${latest.status}`}>{latest.status}</span>
+              {latest.status === 'running' && <Spinner label="crew working…" />}
               <span className="muted small">
                 {latest.prompt_tokens + latest.completion_tokens} tok
                 {latest.tokens_saved > 0 && ` · optimizer saved ~${latest.tokens_saved}`}
                 {latest.cost > 0 && ` · $${latest.cost}`}
+                {latest.started_at && ` · ${timeAgo(latest.started_at)}`}
               </span>
             </div>
-            {latest.log && <pre className="log">{latest.log}</pre>}
+            {latest.log && (
+              <pre className="log" ref={logRef}>
+                {latest.log}
+              </pre>
+            )}
             {latest.output && (
               <>
                 <h4>Output</h4>
