@@ -9,12 +9,30 @@ const COLUMNS: { id: Task['status']; label: string }[] = [
   { id: 'done', label: 'Done' },
 ]
 
-export default function Board() {
+const PRIORITY_ORDER: Record<Task['priority'], number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+}
+
+interface Props {
+  openTaskId?: number | null
+  onTaskOpened?: () => void
+}
+
+export default function Board({ openTaskId, onTaskOpened }: Props) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Task | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', agent_id: '' })
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    agent_id: '',
+    priority: 'medium',
+    due_date: '',
+  })
 
   const refresh = () =>
     api.tasks.list().then((list) => {
@@ -27,14 +45,26 @@ export default function Board() {
     api.agents.list().then(setAgents)
   }, [])
 
+  useEffect(() => {
+    if (openTaskId && tasks.length) {
+      const task = tasks.find((t) => t.id === openTaskId)
+      if (task) {
+        setSelected(task)
+        onTaskOpened?.()
+      }
+    }
+  }, [openTaskId, tasks, onTaskOpened])
+
   const createTask = async (e: FormEvent) => {
     e.preventDefault()
     await api.tasks.create({
       title: form.title,
       description: form.description,
       agent_id: form.agent_id ? Number(form.agent_id) : null,
+      priority: form.priority as Task['priority'],
+      due_date: form.due_date,
     })
-    setForm({ title: '', description: '', agent_id: '' })
+    setForm({ title: '', description: '', agent_id: '', priority: 'medium', due_date: '' })
     setShowForm(false)
     refresh()
   }
@@ -47,6 +77,9 @@ export default function Board() {
       refresh()
     }
   }
+
+  const overdue = (t: Task) =>
+    t.due_date && t.status !== 'done' && new Date(t.due_date) < new Date()
 
   return (
     <div>
@@ -74,6 +107,7 @@ export default function Board() {
             </div>
             {tasks
               .filter((t) => t.status === col.id)
+              .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
               .map((task) => {
                 const agent = agents.find((a) => a.id === task.agent_id)
                 return (
@@ -85,6 +119,17 @@ export default function Board() {
                     onClick={() => setSelected(task)}
                   >
                     <div className="task-title">{task.title}</div>
+                    <div className="task-meta">
+                      {task.priority !== 'medium' && (
+                        <span className={`prio prio-${task.priority}`}>{task.priority}</span>
+                      )}
+                      {task.depends_on && <span className="chip">⛓ deps</span>}
+                      {task.due_date && (
+                        <span className={`chip ${overdue(task) ? 'chip-danger' : ''}`}>
+                          ⏰ {task.due_date}
+                        </span>
+                      )}
+                    </div>
                     {agent && (
                       <div className="task-agent">
                         <span className="mini-avatar">{agent.name.slice(0, 1)}</span>
@@ -142,6 +187,28 @@ export default function Board() {
                 ))}
               </select>
             </label>
+            <div className="form-row">
+              <label>
+                Priority
+                <select
+                  value={form.priority}
+                  onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="urgent">urgent</option>
+                </select>
+              </label>
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={form.due_date}
+                  onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+                />
+              </label>
+            </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
                 Cancel

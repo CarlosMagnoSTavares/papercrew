@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { api, Agent } from '../api'
+import { api, Agent, AgentStats } from '../api'
 
 const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '', specialty: '' }
 
@@ -9,6 +9,12 @@ export default function Agents() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
+  const [stats, setStats] = useState<{ agent: Agent; data: AgentStats } | null>(null)
+
+  const showStats = async (agent: Agent) => {
+    const data = await api.agents.stats(agent.id)
+    setStats({ agent, data })
+  }
 
   const refresh = () => api.agents.list().then(setAgents).catch(console.error)
   useEffect(() => {
@@ -65,6 +71,30 @@ export default function Agents() {
         </button>
       </div>
 
+      <div className="org-chart">
+        <div className="org-row">
+          {agents
+            .filter((a) => a.is_ceo)
+            .map((a) => (
+              <div key={a.id} className="org-node org-ceo">
+                <span className="mini-avatar">{a.name.slice(0, 1)}</span> {a.name}
+                <div className="muted small">{a.role}</div>
+              </div>
+            ))}
+        </div>
+        <div className="org-connector" />
+        <div className="org-row">
+          {agents
+            .filter((a) => !a.is_ceo)
+            .map((a) => (
+              <div key={a.id} className="org-node">
+                <span className="mini-avatar">{a.name.slice(0, 1)}</span> {a.name}
+                <div className="muted small">{a.specialty || a.role}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+
       <div className="card-grid">
         {agents.map((agent) => (
           <div key={agent.id} className="agent-card">
@@ -79,6 +109,9 @@ export default function Agents() {
             <p className="muted small">{agent.goal || 'No goal set'}</p>
             {agent.model && <div className="chip">{agent.model}</div>}
             <div className="card-actions">
+              <button className="btn btn-ghost" onClick={() => showStats(agent)}>
+                Stats
+              </button>
               <button className="btn btn-ghost" onClick={() => openEdit(agent)}>
                 Edit
               </button>
@@ -89,6 +122,37 @@ export default function Agents() {
           </div>
         ))}
       </div>
+
+      {stats && (
+        <div className="modal-backdrop" onClick={() => setStats(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="page-header">
+              <h2>{stats.agent.name} — performance</h2>
+              <button className="btn btn-ghost" onClick={() => setStats(null)}>
+                ✕
+              </button>
+            </div>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <div className="stat-value">{stats.data.tasks_done}/{stats.data.tasks_total}</div>
+                <div className="stat-label">Tasks done</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{stats.data.runs_total}</div>
+                <div className="stat-label">Runs</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value dim">{stats.data.tokens.toLocaleString()}</div>
+                <div className="stat-label">Tokens</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value ok">${stats.data.cost.toFixed(4)}</div>
+                <div className="stat-label">Cost</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>

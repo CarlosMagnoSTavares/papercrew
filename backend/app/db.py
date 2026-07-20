@@ -46,6 +46,8 @@ class TaskRow(Base):
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
     depends_on: Mapped[str] = mapped_column(String(200), default="")  # csv of task ids
     crew_mode: Mapped[str] = mapped_column(String(20), default="solo")  # solo|hierarchical
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    due_date: Mapped[str] = mapped_column(String(40), default="")
     feedback: Mapped[str] = mapped_column(Text, default="")  # from last rejection
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
 
@@ -88,6 +90,32 @@ class RoutineRow(Base):
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     auto_run: Mapped[int] = mapped_column(Integer, default=1)
     next_run_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+    created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+
+
+class HireRequestRow(Base):
+    __tablename__ = "hire_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(200))
+    goal: Mapped[str] = mapped_column(Text, default="")
+    backstory: Mapped[str] = mapped_column(Text, default="")
+    specialty: Mapped[str] = mapped_column(String(120), default="")
+    model: Mapped[str] = mapped_column(String(200), default="")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected
+    created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+
+
+class PlanRow(Base):
+    __tablename__ = "plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    objective: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft|converted
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
 
 

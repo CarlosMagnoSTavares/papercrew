@@ -6,7 +6,9 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
   const [company, setCompany] = useState('')
+  const [mission, setMission] = useState('')
   const [price, setPrice] = useState('0')
+  const [budget, setBudget] = useState('0')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -14,7 +16,9 @@ export default function SettingsPage() {
       setSettings(s)
       setModel(s.default_model)
       setCompany(s.company_name)
+      setMission(s.company_mission)
       setPrice(s.price_per_1k_tokens)
+      setBudget(s.monthly_budget)
     })
   }, [])
 
@@ -24,7 +28,9 @@ export default function SettingsPage() {
       ...(apiKey ? { openrouter_api_key: apiKey } : {}),
       default_model: model,
       company_name: company,
+      company_mission: mission,
       price_per_1k_tokens: price,
+      monthly_budget: budget,
     })
     setSettings(updated)
     setApiKey('')
@@ -51,6 +57,10 @@ export default function SettingsPage() {
           <input value={company} onChange={(e) => setCompany(e.target.value)} />
         </label>
         <label>
+          Company mission
+          <textarea value={mission} onChange={(e) => setMission(e.target.value)} rows={2} />
+        </label>
+        <label>
           OpenRouter API key{' '}
           {settings.openrouter_api_key_set && <span className="chip chip-ok">configured</span>}
           <input
@@ -64,10 +74,16 @@ export default function SettingsPage() {
           Default model
           <input value={model} onChange={(e) => setModel(e.target.value)} />
         </label>
-        <label>
-          Price per 1k tokens (USD, 0 for free models)
-          <input value={price} onChange={(e) => setPrice(e.target.value)} />
-        </label>
+        <div className="form-row">
+          <label>
+            Price per 1k tokens (USD, 0 = free)
+            <input value={price} onChange={(e) => setPrice(e.target.value)} />
+          </label>
+          <label>
+            Monthly budget cap (USD, 0 = unlimited)
+            <input value={budget} onChange={(e) => setBudget(e.target.value)} />
+          </label>
+        </div>
         <p className="muted small">
           Free models: meta-llama/llama-3.3-70b-instruct:free · deepseek/deepseek-chat:free ·
           full list at openrouter.ai/models?q=free

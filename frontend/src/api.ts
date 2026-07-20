@@ -19,8 +19,56 @@ export interface Task {
   agent_id: number | null
   depends_on: string
   crew_mode: 'solo' | 'hierarchical'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  due_date: string
   feedback: string
   created_at: string
+}
+
+export interface Hire {
+  id: number
+  name: string
+  role: string
+  goal: string
+  backstory: string
+  specialty: string
+  model: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}
+
+export interface Plan {
+  id: number
+  title: string
+  objective: string
+  content: string
+  status: 'draft' | 'converted'
+  created_at: string
+}
+
+export interface InboxItem {
+  kind: 'review' | 'hire' | 'failure' | 'unassigned'
+  ref_id: number
+  title: string
+  detail: string
+}
+
+export interface AgentStats {
+  agent_id: number
+  tasks_total: number
+  tasks_done: number
+  runs_total: number
+  tokens: number
+  cost: number
+}
+
+export interface WorkProduct {
+  task_id: number
+  title: string
+  agent: string
+  output: string
+  approved_at: string
 }
 
 export interface Run {
@@ -84,7 +132,9 @@ export interface Settings {
   openrouter_api_key_set: boolean
   default_model: string
   company_name: string
+  company_mission: string
   price_per_1k_tokens: string
+  monthly_budget: string
   fake_llm: boolean
 }
 
@@ -115,7 +165,28 @@ export const api = {
     update: (id: number, data: Partial<Agent>) =>
       request<Agent>(`/api/agents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (id: number) => request<void>(`/api/agents/${id}`, { method: 'DELETE' }),
+    stats: (id: number) => request<AgentStats>(`/api/agents/${id}/stats`),
   },
+  hires: {
+    list: () => request<Hire[]>('/api/hires'),
+    create: (data: Partial<Hire>) => request<Hire>('/api/hires', post(data)),
+    approve: (id: number) => request<Agent>(`/api/hires/${id}/approve`, { method: 'POST' }),
+    reject: (id: number) => request<Hire>(`/api/hires/${id}/reject`, { method: 'POST' }),
+    remove: (id: number) => request<void>(`/api/hires/${id}`, { method: 'DELETE' }),
+  },
+  plans: {
+    list: () => request<Plan[]>('/api/plans'),
+    create: (data: { title: string; objective: string; content?: string; draft_with_ceo?: boolean }) =>
+      request<Plan>('/api/plans', post(data)),
+    convert: (id: number) =>
+      request<{ tasks: { id: number; title: string; agent: string }[] }>(
+        `/api/plans/${id}/convert`,
+        { method: 'POST' },
+      ),
+    remove: (id: number) => request<void>(`/api/plans/${id}`, { method: 'DELETE' }),
+  },
+  inbox: () => request<InboxItem[]>('/api/inbox'),
+  workProducts: () => request<WorkProduct[]>('/api/work-products'),
   tasks: {
     list: () => request<Task[]>('/api/tasks'),
     create: (data: Partial<Task>) => request<Task>('/api/tasks', post(data)),

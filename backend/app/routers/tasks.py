@@ -6,6 +6,7 @@ from ..crew_runner import start_run, unmet_dependencies
 from ..db import AgentRow, CommentRow, RunRow, TaskRow, add_event, get_db
 from ..schemas import (
     CREW_MODES,
+    PRIORITIES,
     TASK_STATUSES,
     CommentIn,
     CommentOut,
@@ -20,11 +21,29 @@ from ..token_optimizer import dependency_ids
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
+def _check_budget(db: Session) -> None:
+    from sqlalchemy import func
+
+    from ..crew_runner import get_setting
+
+    budget = float(get_setting(db, "monthly_budget", "0") or 0)
+    if budget <= 0:
+        return
+    spent = db.scalar(select(func.coalesce(func.sum(RunRow.cost), 0.0))) or 0.0
+    if spent >= budget:
+        raise HTTPException(
+            402, f"Budget exceeded: ${spent:.4f} spent of ${budget:.2f} cap. "
+            "Raise the monthly budget in Settings to keep running.",
+        )
+
+
 def _validate(db: Session, data: dict, task_id: int | None = None) -> None:
     if "status" in data and data["status"] not in TASK_STATUSES:
         raise HTTPException(422, f"status must be one of {TASK_STATUSES}")
     if "crew_mode" in data and data["crew_mode"] not in CREW_MODES:
         raise HTTPException(422, f"crew_mode must be one of {CREW_MODES}")
+    if "priority" in data and data["priority"] not in PRIORITIES:
+        raise HTTPException(422, f"priority must be one of {PRIORITIES}")
     if data.get("agent_id") is not None and db.get(AgentRow, data["agent_id"]) is None:
         raise HTTPException(422, "agent_id does not exist")
     for dep_id in dependency_ids(data.get("depends_on") or ""):
@@ -88,6 +107,7 @@ def run_task(task_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             422, f"Blocked by unfinished dependencies: {', '.join(f'#{i}' for i in unmet)}"
         )
+    _check_budget(db)
     run_id = start_run(task_id)
     return db.get(RunRow, run_id)
 

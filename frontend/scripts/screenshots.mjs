@@ -23,70 +23,109 @@ const apiCall = (path, opts) =>
       }).then((r) => (r.status === 204 ? null : r.json())),
     [path, opts ?? {}],
   )
+const post = (body) => ({ method: 'POST', body: JSON.stringify(body) })
 
 await page.goto(BASE)
 await page.waitForSelector('.stat-card')
 
-// 1. CEO chat: objective -> plan of dependency-chained tasks
+// CEO chat: objective -> dependency-chained plan
 await nav('CEO Chat')
 await page.fill('.chat-input input', 'Launch a weekly newsletter about AI agents')
 await page.click('.chat-input .btn')
 await page.waitForSelector('.chat-msg.ceo', { timeout: 15000 })
 await page.waitForTimeout(400)
-await shot('02-ceo-chat')
+await shot('03-ceo-chat')
 
-// 2. Board with the planned tasks
+// Plan document drafted by the CEO
+await apiCall(
+  '/api/plans',
+  post({
+    title: 'Q3 Growth Plan',
+    objective: 'Grow the newsletter to 10k subscribers',
+    draft_with_ceo: true,
+  }),
+)
+await nav('Plans')
+await page.waitForSelector('.plan-item')
+await page.click('.plan-item')
+await page.waitForSelector('.plan-detail')
+await shot('04-plans')
+
+// Board with planned tasks (priority chips, dependency chains)
+const tasks = await apiCall('/api/tasks')
+await apiCall(`/api/tasks/${tasks[0].id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ priority: 'urgent', due_date: '2026-07-25' }),
+})
 await nav('Task Board')
 await page.waitForSelector('.task-card')
-await shot('03-board')
+await shot('05-board')
 
-// Complete first task via API so the second has dependency context
-const tasks = await apiCall('/api/tasks')
-const [first, second] = tasks
-await apiCall(`/api/tasks/${first.id}/run`, { method: 'POST' })
+// Complete first task, then run the dependent one from the UI
+await apiCall(`/api/tasks/${tasks[0].id}/run`, { method: 'POST' })
 await page.waitForTimeout(2500)
-await apiCall(`/api/tasks/${first.id}/approve`, { method: 'POST' })
+await apiCall(`/api/tasks/${tasks[0].id}/approve`, { method: 'POST' })
 
-// 3. Run the dependent task from the UI — drawer shows optimizer savings
 await page.reload()
 await page.waitForSelector('.stat-card')
 await nav('Task Board')
 await page.waitForSelector('.task-card')
-await page.click(`.task-card:has-text("${second.title.slice(0, 30)}")`)
+await page.click(`.task-card:has-text("${tasks[1].title.slice(0, 30)}")`)
 await page.waitForSelector('.drawer')
 await page.click('button:has-text("Run with CrewAI")')
 await page.waitForSelector('.run-panel .badge-completed', { timeout: 30000 })
 await page.fill('.comment-form input', 'Great result, shipping it.')
 await page.click('.comment-form .btn')
 await page.waitForTimeout(500)
-await shot('04-task-run')
+await shot('06-task-run')
 await page.click('.drawer-header .btn-ghost')
 
-// 4. Routines
-await apiCall('/api/routines', {
-  method: 'POST',
-  body: JSON.stringify({
+// Approve dependent task -> deliverable; file a hire request -> inbox
+await apiCall(`/api/tasks/${tasks[1].id}/approve`, { method: 'POST' })
+await apiCall(
+  '/api/hires',
+  post({
+    name: 'Pixel',
+    role: 'Brand Designer',
+    specialty: 'design',
+    reason: 'CEO: newsletter needs branded visuals — no design specialty on the crew.',
+  }),
+)
+
+await nav('Inbox')
+await page.waitForSelector('.run-row')
+await shot('02-inbox')
+
+await nav('Run History')
+await page.waitForSelector('.run-row')
+await shot('07-runs')
+
+await nav('Deliverables')
+await page.waitForSelector('.agent-card')
+await shot('08-deliverables')
+
+// Routine
+await apiCall(
+  '/api/routines',
+  post({
     title: 'Daily activity digest',
     description: 'Summarize yesterday and plan today',
     agent_id: tasks[0].agent_id,
     interval_minutes: 1440,
   }),
-})
+)
 await nav('Routines')
 await page.waitForSelector('.run-row')
-await shot('05-routines')
+await shot('09-routines')
 
-// 5. Agents
 await nav('Agents')
-await page.waitForSelector('.agent-card')
-await shot('06-agents')
+await page.waitForSelector('.org-chart')
+await shot('10-agents')
 
-// 6. Settings
 await nav('Settings')
 await page.waitForSelector('.settings-form')
-await shot('07-settings')
+await shot('11-settings')
 
-// 7. Dashboard last: populated stats + activity feed
 await nav('Dashboard')
 await page.waitForSelector('.feed-row')
 await shot('01-dashboard')

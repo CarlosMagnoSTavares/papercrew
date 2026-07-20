@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from .db import AgentRow, SessionLocal, init_db
-from .routers import agents, chat, config, meta, routines, runs, tasks
+from .routers import agents, chat, config, hires, meta, plans, routines, runs, tasks
 from .scheduler import start_scheduler
 
 SEED_AGENTS = [
@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for module in (agents, tasks, runs, routines, chat, meta, config):
+    for module in (agents, tasks, runs, routines, chat, hires, plans, meta, config):
         app.include_router(module.router)
 
     @app.get("/api/health")

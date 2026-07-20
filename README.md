@@ -16,15 +16,19 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 | Feature | How it works |
 |---|---|
 | **CEO Chat** | Describe an objective; the CEO agent breaks it into 2–4 tasks, chains them by dependency and delegates each to the best-fit agent by specialty |
-| **Agents** | Hire/fire CrewAI agents with role, goal, backstory, specialty and per-agent model override |
-| **Task board** | Kanban (todo → in progress → review → done) with drag & drop |
+| **Plans** | The CEO drafts a markdown execution plan from your objective; review it, then convert it into dependency-chained tasks with one click |
+| **Inbox** | Everything needing your attention in one place: results to review, pending hire requests, failed runs, unassigned tasks — with a live badge |
+| **Governance hiring** | Agents join via hire requests that you approve or reject; the CEO files hire requests automatically when a plan needs an uncovered specialty |
+| **Agents & org chart** | Hire/fire CrewAI agents with role, goal, backstory, specialty, model override; org chart view and per-agent performance stats (tasks, runs, tokens, cost) |
+| **Task board** | Kanban (todo → in progress → review → done) with drag & drop, priorities (low→urgent), due dates with overdue highlighting |
 | **Dependencies** | Tasks can depend on other tasks; runs are blocked until dependencies are done, and their outputs feed the prompt as compressed context |
-| **Runs** | Each run is a CrewAI crew kickoff — solo (assigned agent) or hierarchical (CEO manager delegates across the whole crew) |
+| **Runs** | Each run is a CrewAI crew kickoff — solo (assigned agent) or hierarchical (CEO manager delegates across the whole crew); full run history page with filters |
 | **Approvals** | Review results, approve to done, or request changes — the agent re-runs with your feedback in the prompt |
+| **Deliverables** | Approved outputs collected as work products, viewable and downloadable as markdown |
 | **Comments** | Threaded discussion per task |
 | **Routines** | Recurring scheduled work — a routine fires a task (and optionally auto-runs it) every N minutes |
 | **Activity feed** | Live company event stream on the dashboard |
-| **Cost oversight** | Prompt/completion tokens and cost tracked per run, aggregated on the dashboard |
+| **Cost oversight** | Tokens and cost per run and per agent, monthly budget cap that blocks runs when exceeded |
 
 ## Native token optimizer
 
@@ -37,17 +41,25 @@ The dashboard shows **tokens saved** by the optimizer next to total token usage 
 
 ## Screenshots
 
-| Dashboard (tokens, cost, activity) | CEO Chat (objective → plan) |
+| Dashboard (tokens, cost, activity) | Inbox (reviews, hires, failures) |
 |---|---|
-| ![Dashboard](docs/evidence/01-dashboard.png) | ![CEO Chat](docs/evidence/02-ceo-chat.png) |
+| ![Dashboard](docs/evidence/01-dashboard.png) | ![Inbox](docs/evidence/02-inbox.png) |
 
-| Task board | Run with dependencies + approval |
+| CEO Chat (objective → plan) | Plans (draft → convert to tasks) |
 |---|---|
-| ![Board](docs/evidence/03-board.png) | ![Run](docs/evidence/04-task-run.png) |
+| ![CEO Chat](docs/evidence/03-ceo-chat.png) | ![Plans](docs/evidence/04-plans.png) |
 
-| Routines | Agents |
+| Task board (priorities, deps, due dates) | Run with dependencies + approval |
 |---|---|
-| ![Routines](docs/evidence/05-routines.png) | ![Agents](docs/evidence/06-agents.png) |
+| ![Board](docs/evidence/05-board.png) | ![Run](docs/evidence/06-task-run.png) |
+
+| Run history | Deliverables |
+|---|---|
+| ![Runs](docs/evidence/07-runs.png) | ![Deliverables](docs/evidence/08-deliverables.png) |
+
+| Agents + org chart | Routines |
+|---|---|
+| ![Agents](docs/evidence/10-agents.png) | ![Routines](docs/evidence/09-routines.png) |
 
 ## Architecture
 
@@ -109,7 +121,7 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 cd backend && ../.venv/Scripts/python -m pytest tests/ -v
 ```
 
-**19 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, routines, events, stats, settings) plus unit tests for the token optimizer (compression, dedupe, budgets, cycle-safe graph walk, measured savings). Evidence in [docs/evidence](docs/evidence).
+**27 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings) plus unit tests for the token optimizer (compression, dedupe, budgets, cycle-safe graph walk, measured savings). Evidence in [docs/evidence](docs/evidence).
 
 ## Roadmap / contributing
 

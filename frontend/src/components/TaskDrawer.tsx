@@ -145,6 +145,31 @@ export default function TaskDrawer({ task, agents, allTasks, onClose, onChanged 
           </select>
         </label>
 
+        <div className="form-row">
+          <label>
+            Priority
+            <select
+              value={task.priority}
+              onChange={(e) =>
+                act(() => api.tasks.patch(task.id, { priority: e.target.value as Task['priority'] }))
+              }
+            >
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="urgent">urgent</option>
+            </select>
+          </label>
+          <label>
+            Due date
+            <input
+              type="date"
+              value={task.due_date}
+              onChange={(e) => act(() => api.tasks.patch(task.id, { due_date: e.target.value }))}
+            />
+          </label>
+        </div>
+
         <div>
           <div className="field-label">Dependencies (must be done before running)</div>
           <div className="dep-list">

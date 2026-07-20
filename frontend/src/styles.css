@@ -164,3 +164,36 @@ h4 { margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
 .comment-author { color: var(--accent); font-weight: 600; margin-right: 6px; }
 .comment-form { display: flex; gap: 8px; }
 .comment-form input { flex: 1; }
+
+.nav-badge { margin-left: auto; background: var(--danger); color: #fff; font-size: 11px; border-radius: 999px; padding: 1px 8px; }
+
+.prio { font-size: 10px; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.5px; }
+.prio-urgent { background: rgba(255, 107, 107, 0.2); color: var(--danger); }
+.prio-high { background: rgba(245, 184, 61, 0.2); color: var(--warn); }
+.prio-low { background: rgba(138, 144, 163, 0.2); color: var(--muted); }
+.task-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.chip-danger { border-color: var(--danger); color: var(--danger); }
+
+.form-row { display: flex; gap: 12px; }
+.form-row label { flex: 1; }
+
+.banner-ok { background: rgba(62, 207, 142, 0.12); border-color: var(--ok); color: var(--ok); }
+
+.plans-layout { display: grid; grid-template-columns: 280px 1fr; gap: 18px; align-items: start; }
+.plans-list { display: flex; flex-direction: column; gap: 8px; }
+.plan-item { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.plan-item.active { border-color: var(--accent); }
+.plan-detail { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.plan-content { max-height: 480px; }
+
+.modal-wide { width: 720px; max-width: 90vw; max-height: 85vh; overflow-y: auto; }
+.clickable { cursor: pointer; }
+.clickable:hover { border-color: var(--accent); }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+
+.org-chart { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 24px; }
+.org-row { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.org-node { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; font-size: 13px; text-align: center; }
+.org-node .mini-avatar { margin-right: 6px; }
+.org-ceo { border-color: var(--accent); }
+.org-connector { width: 2px; height: 18px; background: var(--border); margin: 6px auto; }

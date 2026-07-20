@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 TASK_STATUSES = ("todo", "in_progress", "review", "done")
 CREW_MODES = ("solo", "hierarchical")
+PRIORITIES = ("low", "medium", "high", "urgent")
 
 
 class AgentIn(BaseModel):
@@ -28,6 +29,8 @@ class TaskIn(BaseModel):
     agent_id: int | None = None
     depends_on: str = ""
     crew_mode: str = "solo"
+    priority: str = "medium"
+    due_date: str = ""
 
 
 class TaskOut(TaskIn):
@@ -44,6 +47,8 @@ class TaskPatch(BaseModel):
     agent_id: int | None = None
     depends_on: str | None = None
     crew_mode: str | None = None
+    priority: str | None = None
+    due_date: str | None = None
 
 
 class RejectIn(BaseModel):
@@ -110,18 +115,78 @@ class ChatMessageOut(BaseModel):
     created_at: str
 
 
+class HireIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    role: str = Field(min_length=1, max_length=200)
+    goal: str = ""
+    backstory: str = ""
+    specialty: str = ""
+    model: str = ""
+    reason: str = ""
+
+
+class HireOut(HireIn):
+    id: int
+    status: str
+    created_at: str
+
+
+class PlanIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    objective: str = ""
+    content: str = ""
+    draft_with_ceo: bool = False
+
+
+class PlanOut(BaseModel):
+    id: int
+    title: str
+    objective: str
+    content: str
+    status: str
+    created_at: str
+
+
+class InboxItem(BaseModel):
+    kind: str  # review|failure|hire|unassigned
+    ref_id: int
+    title: str
+    detail: str
+
+
+class AgentStatsOut(BaseModel):
+    agent_id: int
+    tasks_total: int
+    tasks_done: int
+    runs_total: int
+    tokens: int
+    cost: float
+
+
+class WorkProductOut(BaseModel):
+    task_id: int
+    title: str
+    agent: str
+    output: str
+    approved_at: str
+
+
 class SettingsIn(BaseModel):
     openrouter_api_key: str | None = None
     default_model: str | None = None
     company_name: str | None = None
+    company_mission: str | None = None
     price_per_1k_tokens: str | None = None
+    monthly_budget: str | None = None
 
 
 class SettingsOut(BaseModel):
     openrouter_api_key_set: bool
     default_model: str
     company_name: str
+    company_mission: str
     price_per_1k_tokens: str
+    monthly_budget: str
     fake_llm: bool
 
 
