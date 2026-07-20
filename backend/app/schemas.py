@@ -31,6 +31,7 @@ class TaskIn(BaseModel):
     crew_mode: str = "solo"
     priority: str = "medium"
     due_date: str = ""
+    goal_id: int | None = None
 
 
 class TaskOut(TaskIn):
@@ -113,6 +114,46 @@ class ChatMessageOut(BaseModel):
     role: str
     body: str
     created_at: str
+
+
+class SkillIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = ""
+
+
+class SkillOut(SkillIn):
+    id: int
+    agent_id: int
+    created_at: str
+
+
+class GoalIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    autopilot: bool = True
+
+
+class GoalOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    status: str
+    progress: int
+    autopilot: bool
+    cycle: int
+    created_at: str
+
+
+class OnboardIn(BaseModel):
+    company_name: str = Field(min_length=1, max_length=120)
+    mission: str = Field(min_length=1)
+    first_goal: str = Field(min_length=1, max_length=200)
+
+
+class CompanyOut(BaseModel):
+    onboarded: bool
+    company_name: str
+    company_mission: str
 
 
 class HireIn(BaseModel):

@@ -3,8 +3,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
+import os
+
+from .autopilot import start_autopilot
 from .db import AgentRow, SessionLocal, init_db
-from .routers import agents, chat, config, hires, meta, plans, routines, runs, tasks
+from .routers import (
+    agents,
+    chat,
+    company,
+    config,
+    goals,
+    hires,
+    meta,
+    plans,
+    routines,
+    runs,
+    tasks,
+)
 from .scheduler import start_scheduler
 
 SEED_AGENTS = [
@@ -48,6 +63,9 @@ SEED_AGENTS = [
 
 
 def seed_if_empty() -> None:
+    """Demo/test seeding only — real companies are built via /api/company/onboard."""
+    if os.getenv("PAPERCREW_SEED", "0") != "1":
+        return
     db = SessionLocal()
     try:
         if db.scalars(select(AgentRow)).first() is None:
@@ -66,7 +84,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for module in (agents, tasks, runs, routines, chat, hires, plans, meta, config):
+    for module in (agents, tasks, runs, routines, chat, hires, plans, goals, company, meta, config):
         app.include_router(module.router)
 
     @app.get("/api/health")
@@ -79,4 +97,5 @@ def create_app() -> FastAPI:
 init_db()
 seed_if_empty()
 start_scheduler()
+start_autopilot()
 app = create_app()

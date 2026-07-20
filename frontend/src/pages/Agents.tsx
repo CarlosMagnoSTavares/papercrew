@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { api, Agent, AgentStats } from '../api'
+import { api, Agent, AgentStats, Skill } from '../api'
 
 const EMPTY = { name: '', role: '', goal: '', backstory: '', model: '', specialty: '' }
 
@@ -16,10 +16,24 @@ export default function Agents() {
     setStats({ agent, data })
   }
 
-  const refresh = () => api.agents.list().then(setAgents).catch(console.error)
+  const [skillsByAgent, setSkillsByAgent] = useState<Record<number, Skill[]>>({})
+
+  const refresh = async () => {
+    const list = await api.agents.list()
+    setAgents(list)
+    const entries = await Promise.all(
+      list.map(async (a) => [a.id, await api.agents.skills(a.id)] as const),
+    )
+    setSkillsByAgent(Object.fromEntries(entries))
+  }
   useEffect(() => {
-    refresh()
+    refresh().catch(console.error)
   }, [])
+
+  const generateSkills = async (agent: Agent) => {
+    await api.agents.generateSkills(agent.id)
+    refresh()
+  }
 
   const openCreate = () => {
     setEditing(null)
@@ -107,6 +121,20 @@ export default function Agents() {
               {agent.specialty && <span className="muted small"> · {agent.specialty}</span>}
             </div>
             <p className="muted small">{agent.goal || 'No goal set'}</p>
+            <div className="skill-chips">
+              {(skillsByAgent[agent.id] ?? []).map((s) => (
+                <span key={s.id} className="chip chip-skill" title={s.description}>
+                  ⚡ {s.name}
+                </span>
+              ))}
+              <button
+                className="chip chip-add"
+                title="CEO distributes skills fitting this agent"
+                onClick={() => generateSkills(agent)}
+              >
+                + skills
+              </button>
+            </div>
             {agent.model && <div className="chip">{agent.model}</div>}
             <div className="card-actions">
               <button className="btn btn-ghost" onClick={() => showStats(agent)}>

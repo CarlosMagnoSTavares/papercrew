@@ -48,6 +48,7 @@ class TaskRow(Base):
     crew_mode: Mapped[str] = mapped_column(String(20), default="solo")  # solo|hierarchical
     priority: Mapped[str] = mapped_column(String(20), default="medium")
     due_date: Mapped[str] = mapped_column(String(40), default="")
+    goal_id: Mapped[int | None] = mapped_column(ForeignKey("goals.id"), nullable=True)
     feedback: Mapped[str] = mapped_column(Text, default="")  # from last rejection
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
 
@@ -90,6 +91,29 @@ class RoutineRow(Base):
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     auto_run: Mapped[int] = mapped_column(Integer, default=1)
     next_run_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+    created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+
+
+class SkillRow(Base):
+    __tablename__ = "skills"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"))
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
+
+
+class GoalRow(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active|achieved|paused
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    autopilot: Mapped[int] = mapped_column(Integer, default=1)
+    cycle: Mapped[int] = mapped_column(Integer, default=0)  # planning iterations done
     created_at: Mapped[str] = mapped_column(String(40), default=utcnow)
 
 

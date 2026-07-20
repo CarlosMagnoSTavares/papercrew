@@ -5,6 +5,8 @@ from pathlib import Path
 
 os.environ["PAPERCREW_FAKE_LLM"] = "1"
 os.environ["PAPERCREW_SCHEDULER"] = "0"
+os.environ["PAPERCREW_AUTOPILOT"] = "0"
+os.environ["PAPERCREW_SEED"] = "1"
 os.environ["PAPERCREW_DB"] = str(
     Path(tempfile.mkdtemp(prefix="papercrew-test-")) / "test.db"
 )

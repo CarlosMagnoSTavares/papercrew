@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db import AgentRow, RunRow, TaskRow, get_db
-from ..schemas import AgentIn, AgentOut, AgentStatsOut
+from ..db import AgentRow, RunRow, SkillRow, TaskRow, add_event, get_db
+from ..schemas import AgentIn, AgentOut, AgentStatsOut, SkillIn, SkillOut
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -68,5 +68,86 @@ def delete_agent(agent_id: int, db: Session = Depends(get_db)):
     row = db.get(AgentRow, agent_id)
     if row is None:
         raise HTTPException(404, "Agent not found")
+    for skill in db.scalars(select(SkillRow).where(SkillRow.agent_id == agent_id)):
+        db.delete(skill)
     db.delete(row)
     db.commit()
+
+
+@router.get("/{agent_id}/skills", response_model=list[SkillOut])
+def list_skills(agent_id: int, db: Session = Depends(get_db)):
+    if db.get(AgentRow, agent_id) is None:
+        raise HTTPException(404, "Agent not found")
+    return db.scalars(
+        select(SkillRow).where(SkillRow.agent_id == agent_id).order_by(SkillRow.id)
+    ).all()
+
+
+@router.post("/{agent_id}/skills", response_model=SkillOut, status_code=201)
+def add_skill(agent_id: int, payload: SkillIn, db: Session = Depends(get_db)):
+    if db.get(AgentRow, agent_id) is None:
+        raise HTTPException(404, "Agent not found")
+    row = SkillRow(agent_id=agent_id, **payload.model_dump())
+    db.add(row)
+    db.commit()
+    return row
+
+
+@router.delete("/{agent_id}/skills/{skill_id}", status_code=204)
+def delete_skill(agent_id: int, skill_id: int, db: Session = Depends(get_db)):
+    row = db.get(SkillRow, skill_id)
+    if row is None or row.agent_id != agent_id:
+        raise HTTPException(404, "Skill not found")
+    db.delete(row)
+    db.commit()
+
+
+@router.post("/{agent_id}/skills/generate", response_model=list[SkillOut])
+def generate_skills(agent_id: int, db: Session = Depends(get_db)):
+    """CEO distributes skills that fit this agent's role and specialty."""
+    agent = db.get(AgentRow, agent_id)
+    if agent is None:
+        raise HTTPException(404, "Agent not found")
+
+    from ..crew_runner import fake_llm_enabled
+
+    existing = {
+        s.name.lower()
+        for s in db.scalars(select(SkillRow).where(SkillRow.agent_id == agent_id))
+    }
+    if fake_llm_enabled():
+        base = agent.specialty or agent.role
+        candidates = [
+            {"name": f"{base.title()} fundamentals",
+             "description": f"Core techniques for {base} work"},
+            {"name": f"Advanced {base}", "description": f"Deep expertise in {base}"},
+            {"name": "Concise reporting", "description": "Dense, clear result summaries"},
+        ]
+    else:
+        import json
+        import re
+
+        from ..ceo import _llm_call
+
+        raw = _llm_call(
+            f"Agent role: {agent.role}. Specialty: {agent.specialty}. Goal: {agent.goal}.\n"
+            'Propose 3 skills. Reply ONLY JSON: [{"name", "description"}]',
+            max_tokens=500,
+        )
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            raise HTTPException(502, "CEO returned no skills")
+        candidates = json.loads(match.group(0))
+
+    created = []
+    for skill in candidates[:5]:
+        if skill.get("name", "").lower() in existing:
+            continue
+        row = SkillRow(agent_id=agent_id, name=skill["name"][:120],
+                       description=skill.get("description", ""))
+        db.add(row)
+        created.append(row)
+    add_event(db, "skill", f"Skills distributed to {agent.name}: "
+              f"{', '.join(s.name for s in created) or 'none new'}")
+    db.commit()
+    return created

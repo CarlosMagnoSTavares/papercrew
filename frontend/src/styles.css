@@ -197,3 +197,27 @@ h4 { margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
 .org-node .mini-avatar { margin-right: 6px; }
 .org-ceo { border-color: var(--accent); }
 .org-connector { width: 2px; height: 18px; background: var(--border); margin: 6px auto; }
+
+.onboard-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.onboard-card { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 36px; width: 560px; max-width: 95vw; display: flex; flex-direction: column; gap: 16px; max-height: 90vh; overflow-y: auto; }
+.onboard-logo { padding-bottom: 0; }
+.btn-big { padding: 14px; font-size: 16px; }
+.onboard-agents { display: flex; flex-direction: column; gap: 12px; }
+.onboard-agent { display: flex; gap: 10px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+
+.skill-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.chip-skill { border-color: var(--accent-2); color: var(--accent-2); }
+.chip-add { cursor: pointer; background: transparent; }
+.chip-add:hover { border-color: var(--accent); color: var(--accent); }
+
+.goal-list { display: flex; flex-direction: column; gap: 16px; }
+.goal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.goal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.progress-track { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+.progress-track.slim { height: 6px; flex: 1; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; transition: width 0.6s ease; }
+.progress-fill.done { background: var(--ok); }
+.goal-tasks { display: flex; flex-wrap: wrap; gap: 6px; }
+.goal-task-done { border-color: var(--ok); color: var(--ok); }
+.goal-task-in_progress { border-color: var(--warn); color: var(--warn); }
+.goal-banner { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; }

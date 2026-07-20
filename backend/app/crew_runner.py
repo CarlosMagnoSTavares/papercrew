@@ -11,7 +11,7 @@ import time
 
 from sqlalchemy import select
 
-from .db import AgentRow, RunRow, SessionLocal, SettingRow, TaskRow, add_event, utcnow
+from .db import AgentRow, RunRow, SessionLocal, SettingRow, SkillRow, TaskRow, add_event, utcnow
 from .token_optimizer import (
     MAX_COMPLETION_TOKENS,
     TERSE_SUFFIX,
@@ -32,6 +32,15 @@ def fake_llm_enabled() -> bool:
 def get_setting(db, key: str, default: str = "") -> str:
     row = db.get(SettingRow, key)
     return row.value if row and row.value else default
+
+
+def agent_skills_text(agent_id: int) -> str:
+    db = SessionLocal()
+    try:
+        skills = db.scalars(select(SkillRow).where(SkillRow.agent_id == agent_id)).all()
+        return "; ".join(f"{s.name} ({compress_text(s.description, 80)})" for s in skills)
+    finally:
+        db.close()
 
 
 def unmet_dependencies(db, task: TaskRow) -> list[int]:
@@ -109,6 +118,9 @@ def _gather_context(task: TaskRow) -> tuple[str, int]:
 
 def _run_fake(run_id: int, task: TaskRow, agent: AgentRow, prompt: str, saved: int) -> None:
     _append_log(run_id, f"[demo] Crew assembled — agent '{agent.name}' ({agent.role})")
+    skills = agent_skills_text(agent.id)
+    if skills:
+        _append_log(run_id, f"[demo] Applying skills: {compress_text(skills, 200)}")
     if saved:
         _append_log(run_id, f"[optimizer] context graph compressed, ~{saved} tokens saved")
     time.sleep(0.4)
@@ -151,10 +163,14 @@ def _run_crewai(
     llm = _build_llm(api_key, model)
 
     def make_agent(row: AgentRow) -> Agent:
+        skills = agent_skills_text(row.id)
+        backstory = compress_text(row.backstory or f"{row.name}, diligent {row.role}.", 300)
+        if skills:
+            backstory += f" Skills: {compress_text(skills, 300)}"
         return Agent(
             role=row.role,
             goal=compress_text(row.goal or f"Complete assigned tasks as {row.role}", 300),
-            backstory=compress_text(row.backstory or f"{row.name}, diligent {row.role}.", 300),
+            backstory=backstory,
             llm=llm,
             verbose=False,
         )

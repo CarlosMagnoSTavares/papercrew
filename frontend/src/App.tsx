@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
+import Onboarding from './pages/Onboarding'
+import Goals from './pages/Goals'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
 import Chat from './pages/Chat'
@@ -13,6 +15,7 @@ import SettingsPage from './pages/Settings'
 
 type Page =
   | 'dashboard'
+  | 'goals'
   | 'inbox'
   | 'chat'
   | 'plans'
@@ -25,6 +28,7 @@ type Page =
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
+  { id: 'goals', label: 'Goals', icon: '🎯' },
   { id: 'inbox', label: 'Inbox', icon: '◈' },
   { id: 'chat', label: 'CEO Chat', icon: '💬' },
   { id: 'plans', label: 'Plans', icon: '☰' },
@@ -39,6 +43,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
   const [company, setCompany] = useState('PaperCrew')
+  const [onboarded, setOnboarded] = useState<boolean | null>(null)
   const [inboxCount, setInboxCount] = useState(0)
   const [openTaskId, setOpenTaskId] = useState<number | null>(null)
 
@@ -49,14 +54,29 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    api.settings
+    api.company
       .get()
-      .then((s) => setCompany(s.company_name))
-      .catch(() => undefined)
+      .then((c) => {
+        setOnboarded(c.onboarded)
+        if (c.onboarded && c.company_name) setCompany(c.company_name)
+      })
+      .catch(() => setOnboarded(true))
     refreshBadge()
     const timer = window.setInterval(refreshBadge, 10000)
     return () => window.clearInterval(timer)
   }, [page, refreshBadge])
+
+  if (onboarded === null) return null
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          setOnboarded(true)
+          setPage('goals')
+        }}
+      />
+    )
+  }
 
   const openTask = (taskId: number) => {
     setOpenTaskId(taskId)
@@ -94,6 +114,7 @@ export default function App() {
       </aside>
       <main className="content">
         {page === 'dashboard' && <Dashboard />}
+        {page === 'goals' && <Goals />}
         {page === 'inbox' && <Inbox onOpenTask={openTask} />}
         {page === 'chat' && <Chat />}
         {page === 'plans' && <Plans />}

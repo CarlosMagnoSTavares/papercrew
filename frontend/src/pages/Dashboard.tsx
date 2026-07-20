@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react'
-import { api, AppEvent, Run, Stats, Task } from '../api'
+import { api, AppEvent, Goal, Run, Stats, Task } from '../api'
 
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<AppEvent[]>([])
+  const [goals, setGoals] = useState<Goal[]>([])
   const [agentCount, setAgentCount] = useState(0)
 
   useEffect(() => {
-    api.agents.list().then((a) => setAgentCount(a.length)).catch(console.error)
-    api.tasks.list().then(setTasks).catch(console.error)
-    api.runs.list().then(setRuns).catch(console.error)
-    api.stats().then(setStats).catch(console.error)
-    api.events().then(setEvents).catch(console.error)
+    const load = () => {
+      api.agents.list().then((a) => setAgentCount(a.length)).catch(console.error)
+      api.tasks.list().then(setTasks).catch(console.error)
+      api.runs.list().then(setRuns).catch(console.error)
+      api.stats().then(setStats).catch(console.error)
+      api.events().then(setEvents).catch(console.error)
+      api.goals.list().then(setGoals).catch(console.error)
+    }
+    load()
+    const timer = window.setInterval(load, 5000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const byStatus = (s: Task['status']) => tasks.filter((t) => t.status === s).length
@@ -22,6 +29,17 @@ export default function Dashboard() {
     <div>
       <h1>Dashboard</h1>
       <p className="subtitle">Your AI company at a glance</p>
+      {goals
+        .filter((g) => g.status === 'active')
+        .map((g) => (
+          <div key={g.id} className="goal-banner">
+            <span>🎯 {g.title}</span>
+            <div className="progress-track slim">
+              <div className="progress-fill" style={{ width: `${g.progress}%` }} />
+            </div>
+            <span className="muted small">{g.progress}% · autopilot working…</span>
+          </div>
+        ))}
       <div className="stat-grid">
         <StatCard label="Agents" value={agentCount} />
         <StatCard label="To do" value={byStatus('todo')} />

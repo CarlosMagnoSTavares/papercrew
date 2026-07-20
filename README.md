@@ -11,10 +11,19 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 
 > PT-BR: interface estilo Paperclip + orquestração CrewAI + otimização nativa de tokens + modelos gratuitos via OpenRouter.
 
+## The magic: describe your company, watch it work
+
+1. **Onboarding** — tell PaperCrew your company name, mission and first goal. The CEO designs the team, hires the right agents, **distributes tailored skills to each one**, and plans the first project.
+2. **Autopilot** — agents don't run one prompt and die. For every active goal the autopilot continuously: runs the next ready task → auto-approves results (CEO sign-off) → retries failures with feedback → **plans complementary tasks** when a cycle completes → and only stops when the goal is achieved (or you pause it). Every action is visible in the activity feed.
+3. **Self-optimization** — every run passes through the native token optimizer, failed work is retried with the error fed back, and skills sharpen each agent's prompts.
+
 ## Features
 
 | Feature | How it works |
 |---|---|
+| **Company onboarding** | One form → CEO builds the team, distributes skills, creates the first goal and plans the onboarding project |
+| **Goals + Autopilot** | Progress-tracked goals; the autopilot works each active goal to completion autonomously (pause/resume anytime) |
+| **Skills** | Per-agent skills stored, injected into CrewAI prompts, distributed at onboarding and generatable per agent |
 | **CEO Chat** | Describe an objective; the CEO agent breaks it into 2–4 tasks, chains them by dependency and delegates each to the best-fit agent by specialty |
 | **Plans** | The CEO drafts a markdown execution plan from your objective; review it, then convert it into dependency-chained tasks with one click |
 | **Inbox** | Everything needing your attention in one place: results to review, pending hire requests, failed runs, unassigned tasks — with a live badge |
@@ -41,25 +50,21 @@ The dashboard shows **tokens saved** by the optimizer next to total token usage 
 
 ## Screenshots
 
-| Dashboard (tokens, cost, activity) | Inbox (reviews, hires, failures) |
+| Onboarding — describe your company | Company built: team + skills + first goal |
 |---|---|
-| ![Dashboard](docs/evidence/01-dashboard.png) | ![Inbox](docs/evidence/02-inbox.png) |
+| ![Onboarding](docs/evidence/01-onboarding.png) | ![Company ready](docs/evidence/02-company-ready.png) |
 
-| CEO Chat (objective → plan) | Plans (draft → convert to tasks) |
+| Autopilot working the goal | Goal achieved autonomously (7/7 tasks) |
 |---|---|
-| ![CEO Chat](docs/evidence/03-ceo-chat.png) | ![Plans](docs/evidence/04-plans.png) |
+| ![Autopilot](docs/evidence/03-goals-autopilot.png) | ![Achieved](docs/evidence/04-goal-achieved.png) |
 
-| Task board (priorities, deps, due dates) | Run with dependencies + approval |
+| Dashboard (activity, tokens, cost) | Agents with distributed skills |
 |---|---|
-| ![Board](docs/evidence/05-board.png) | ![Run](docs/evidence/06-task-run.png) |
+| ![Dashboard](docs/evidence/05-dashboard.png) | ![Agents](docs/evidence/06-agents-skills.png) |
 
-| Run history | Deliverables |
+| Board (all tasks created by autopilot) | Deliverables produced autonomously |
 |---|---|
-| ![Runs](docs/evidence/07-runs.png) | ![Deliverables](docs/evidence/08-deliverables.png) |
-
-| Agents + org chart | Routines |
-|---|---|
-| ![Agents](docs/evidence/10-agents.png) | ![Routines](docs/evidence/09-routines.png) |
+| ![Board](docs/evidence/07-board.png) | ![Deliverables](docs/evidence/09-deliverables.png) |
 
 ## Architecture
 
@@ -121,7 +126,7 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 cd backend && ../.venv/Scripts/python -m pytest tests/ -v
 ```
 
-**27 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings) plus unit tests for the token optimizer (compression, dedupe, budgets, cycle-safe graph walk, measured savings). Evidence in [docs/evidence](docs/evidence).
+**32 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (onboarding builds the company with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
 
 ## Roadmap / contributing
 

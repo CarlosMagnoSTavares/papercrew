@@ -63,6 +63,37 @@ export interface AgentStats {
   cost: number
 }
 
+export interface Skill {
+  id: number
+  agent_id: number
+  name: string
+  description: string
+  created_at: string
+}
+
+export interface Goal {
+  id: number
+  title: string
+  description: string
+  status: 'active' | 'achieved' | 'paused'
+  progress: number
+  autopilot: boolean
+  cycle: number
+  created_at: string
+}
+
+export interface Company {
+  onboarded: boolean
+  company_name: string
+  company_mission: string
+}
+
+export interface OnboardResult {
+  agents: { id: number; name: string; role: string; skills: string[] }[]
+  goal: { id: number; title: string }
+  tasks: { id: number; title: string; agent: string }[]
+}
+
 export interface WorkProduct {
   task_id: number
   title: string
@@ -166,6 +197,27 @@ export const api = {
       request<Agent>(`/api/agents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (id: number) => request<void>(`/api/agents/${id}`, { method: 'DELETE' }),
     stats: (id: number) => request<AgentStats>(`/api/agents/${id}/stats`),
+    skills: (id: number) => request<Skill[]>(`/api/agents/${id}/skills`),
+    addSkill: (id: number, data: { name: string; description: string }) =>
+      request<Skill>(`/api/agents/${id}/skills`, post(data)),
+    generateSkills: (id: number) =>
+      request<Skill[]>(`/api/agents/${id}/skills/generate`, { method: 'POST' }),
+    removeSkill: (agentId: number, skillId: number) =>
+      request<void>(`/api/agents/${agentId}/skills/${skillId}`, { method: 'DELETE' }),
+  },
+  company: {
+    get: () => request<Company>('/api/company'),
+    onboard: (data: { company_name: string; mission: string; first_goal: string }) =>
+      request<OnboardResult>('/api/company/onboard', post(data)),
+  },
+  goals: {
+    list: () => request<Goal[]>('/api/goals'),
+    create: (data: { title: string; description?: string }) =>
+      request<Goal>('/api/goals', post(data)),
+    tasks: (id: number) => request<Task[]>(`/api/goals/${id}/tasks`),
+    pause: (id: number) => request<Goal>(`/api/goals/${id}/pause`, { method: 'POST' }),
+    resume: (id: number) => request<Goal>(`/api/goals/${id}/resume`, { method: 'POST' }),
+    tick: () => request<{ actions: number }>('/api/goals/tick', { method: 'POST' }),
   },
   hires: {
     list: () => request<Hire[]>('/api/hires'),
