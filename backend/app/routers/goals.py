@@ -82,5 +82,6 @@ def resume_goal(
 
 @router.post("/tick")
 def manual_tick():
-    """Run one autopilot pass across every company immediately (demo / tests)."""
+    """Run one autopilot pass across every company immediately, instead of
+    waiting for the next tick."""
     return {"actions": autopilot_tick()}

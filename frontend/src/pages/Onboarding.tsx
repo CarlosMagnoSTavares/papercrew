@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { api, OnboardResult } from '../api'
 import { Spinner } from '../ui'
 
@@ -13,6 +13,32 @@ export default function Onboarding({ onDone, canCancel, onCancel }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<OnboardResult | null>(null)
+  const [keyReady, setKeyReady] = useState<boolean | null>(null)
+  const [apiKey, setApiKey] = useState('')
+  const [savingKey, setSavingKey] = useState(false)
+
+  useEffect(() => {
+    api.settings
+      .get()
+      .then((s) => setKeyReady(s.openrouter_api_key_set))
+      .catch(() => setKeyReady(false))
+  }, [])
+
+  const saveKey = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!apiKey.trim()) return
+    setSavingKey(true)
+    setError('')
+    try {
+      const saved = await api.settings.update({ openrouter_api_key: apiKey.trim() })
+      setKeyReady(saved.openrouter_api_key_set)
+      setApiKey('')
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setSavingKey(false)
+    }
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -27,6 +53,51 @@ export default function Onboarding({ onDone, canCancel, onCancel }: Props) {
     }
   }
 
+  if (keyReady === null) return null
+
+  // Nothing works without a model behind it — ask for the key up front.
+  if (!keyReady) {
+    return (
+      <div className="onboard-wrap">
+        <form className="onboard-card" onSubmit={saveKey}>
+          <div className="logo onboard-logo">
+            <span className="logo-mark">📎</span>
+            <span className="logo-text">PaperCrew</span>
+          </div>
+          <h1>Connect a model first</h1>
+          <p className="subtitle">
+            Your agents run on OpenRouter. Paste an API key to continue — PaperCrew defaults to a
+            free model, so this costs nothing to try. Get a key at{' '}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
+              openrouter.ai/keys
+            </a>
+            .
+          </p>
+          {error && <div className="error">{error}</div>}
+          <label>
+            OpenRouter API key
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-or-..."
+              autoFocus
+              required
+            />
+          </label>
+          <button className="btn btn-primary btn-big" disabled={savingKey || !apiKey.trim()}>
+            {savingKey ? <Spinner label="Saving…" /> : 'Save key & continue'}
+          </button>
+          {canCancel && (
+            <button type="button" className="btn btn-ghost" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </form>
+      </div>
+    )
+  }
+
   if (result) {
     return (
       <div className="onboard-wrap">
@@ -36,13 +107,14 @@ export default function Onboarding({ onDone, canCancel, onCancel }: Props) {
             The CEO built your team, distributed skills and planned the first goal. Autopilot is
             already working toward it — alongside any other company you run.
           </p>
-          <h2>Your crew</h2>
+          <h2>Your crew — built for this business</h2>
           <div className="onboard-agents">
             {result.agents.map((a) => (
               <div key={a.id} className="onboard-agent">
                 <span className="mini-avatar">{a.name.slice(0, 1)}</span>
                 <div>
                   <strong>{a.name}</strong> <span className="muted small">{a.role}</span>
+                  {a.specialty && <span className="chip chip-skill">{a.specialty}</span>}
                   <div className="skill-chips">
                     {a.skills.map((s) => (
                       <span key={s} className="chip">

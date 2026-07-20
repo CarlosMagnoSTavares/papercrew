@@ -42,9 +42,13 @@ export default function SettingsPage() {
         model override and budget live on the Companies page.
       </p>
 
-      {settings.fake_llm && (
+      {!settings.openrouter_api_key_set && (
         <div className="banner">
-          Demo mode active (PAPERCREW_FAKE_LLM=1) — runs are simulated, no tokens spent.
+          No API key yet — agents cannot plan or run until you add one. Free keys at{' '}
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
+            openrouter.ai/keys
+          </a>
+          .
         </div>
       )}
 

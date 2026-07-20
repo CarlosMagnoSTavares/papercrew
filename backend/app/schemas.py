@@ -245,7 +245,6 @@ class SettingsOut(BaseModel):
     openrouter_api_key_set: bool
     default_model: str
     price_per_1k_tokens: str
-    fake_llm: bool
 
 
 class StatsOut(BaseModel):

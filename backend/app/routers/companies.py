@@ -68,10 +68,15 @@ def list_companies(include_archived: bool = False, db: Session = Depends(get_db)
 
 
 @router.post("", status_code=201)
-def create(payload: CompanyCreateIn, db: Session = Depends(get_db)):
-    """Build a whole company: crew, skills, first goal and initial tasks."""
+def create(payload: CompanyCreateIn):
+    """Build a whole company: a crew designed for this business, its skills,
+    the first goal and the initial tasks. Requires an OpenRouter key."""
+    from .. import llm
+
     try:
         return create_company(payload.company_name, payload.mission, payload.first_goal)
+    except llm.LLMNotConfigured as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - surface planner failures to the UI
         raise HTTPException(502, f"Company creation failed: {exc}") from exc
 

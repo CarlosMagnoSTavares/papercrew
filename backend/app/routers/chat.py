@@ -23,7 +23,11 @@ def history(
 
 @router.post("")
 def send(payload: ChatIn, company_id: int = Depends(require_company_id)):
+    from .. import llm
+
     try:
         return handle_message(payload.message, company_id)
+    except llm.LLMNotConfigured as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - surface planner errors to the UI
         raise HTTPException(502, f"CEO could not build a plan: {exc}") from exc

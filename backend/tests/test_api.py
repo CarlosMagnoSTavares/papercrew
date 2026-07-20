@@ -1,4 +1,4 @@
-"""API tests. Fake LLM + temp DB + scheduler off (set in conftest)."""
+"""API tests. LLM boundary stubbed + temp DB + schedulers off (see conftest)."""
 import time
 
 from fastapi.testclient import TestClient
@@ -30,10 +30,11 @@ def test_health():
     assert client.get("/api/health").json()["status"] == "ok"
 
 
-def test_seed_agents_with_ceo():
+def test_default_company_has_a_crew_with_a_ceo():
     agents = client.get("/api/agents").json()
-    assert len(agents) >= 5
+    assert len(agents) >= 3
     assert any(a["is_ceo"] for a in agents)
+    assert all(a["specialty"] for a in agents)
 
 
 def test_agent_crud():
@@ -171,4 +172,4 @@ def test_settings_roundtrip():
     body = updated.json()
     assert body["openrouter_api_key_set"] is True
     assert body["default_model"] == "some/model:free"
-    assert body["fake_llm"] is True
+    assert "fake_llm" not in body  # no simulated mode exists

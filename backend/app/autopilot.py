@@ -4,8 +4,8 @@ Each tick, per active goal with autopilot on:
 1. auto-approve completed results sitting in review (CEO sign-off)
 2. retry a failed task once, feeding the error back as reviewer feedback
 3. start the next runnable task (deps met, agent assigned, nothing running)
-4. when every task is done, evaluate: create complementary tasks for the next
-   cycle, or mark the goal achieved (progress 100) and stop
+4. when every task is done, ask the CEO whether the goal is met: queue the next
+   round of tasks, or mark the goal achieved (progress 100) and stop
 
 The loop never dies with a prompt — it stops only when the goal is achieved
 or the user pauses it. Every action lands in the activity feed.
@@ -101,55 +101,27 @@ def _start_next_runnable(db, goal: GoalRow, tasks: list[TaskRow]) -> bool:
     return False
 
 
-def _complementary_steps(goal: GoalRow) -> list[dict]:
-    topic = compress_text(goal.title, 100)
-    return [
-        {"title": f"Optimize: {topic}",
-         "description": f"Review everything produced so far for '{goal.title}' and improve the weakest part. {goal.description}",
-         "specialty": "analysis"},
-        {"title": f"Final report: {topic}",
-         "description": f"Consolidate all results for '{goal.title}' into a final report with next recommendations.",
-         "specialty": "writing"},
-    ]
-
-
-def _llm_next_steps(db, goal: GoalRow, tasks: list[TaskRow]) -> tuple[bool, list[dict]]:
-    """Real mode: CEO judges achievement and proposes next tasks."""
-    import json
-    import re
-
-    from .ceo import _llm_call
-
-    done_summaries = "\n".join(
-        f"- {t.title}" for t in tasks if t.status == "done"
-    )
-    raw = _llm_call(
-        f"Goal: {goal.title}. {goal.description}\nCompleted tasks:\n{done_summaries}\n"
-        'Is the goal achieved? Reply ONLY JSON: {"achieved": bool, '
-        '"next_tasks": [{"title", "description", "specialty"}] (empty if achieved, max 3)}',
-        max_tokens=800,
-        company_id=goal.company_id,
-    )
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
-        return True, []
-    data = json.loads(match.group(0))
-    return bool(data.get("achieved")), list(data.get("next_tasks", []))[:3]
-
-
 def _evaluate_goal(db, goal: GoalRow, tasks: list[TaskRow]) -> None:
-    from .ceo import create_tasks_from_steps
-    from .crew_runner import fake_llm_enabled
+    """Ask the CEO whether the goal is met; otherwise queue the next tasks."""
+    from .ceo import create_tasks_from_steps, summarize_for_goal
 
-    if fake_llm_enabled():
-        achieved = goal.cycle >= MAX_CYCLES
-        steps = [] if achieved else _complementary_steps(goal)
-    else:
-        achieved, steps = _llm_next_steps(db, goal, tasks)
-        if not achieved and not steps:
-            steps = _complementary_steps(goal)
-        if goal.cycle >= MAX_CYCLES + 2:  # hard stop so real mode can't loop forever
-            achieved, steps = True, []
+    try:
+        achieved, steps = summarize_for_goal(
+            f"{goal.title}. {goal.description}".strip(),
+            [t.title for t in tasks if t.status == "done"],
+            goal.company_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - never let a bad reply wedge the loop
+        add_event(db, "autopilot",
+                  f"Autopilot could not evaluate '{goal.title}': {compress_text(str(exc), 160)}",
+                  goal.company_id)
+        db.commit()
+        return
+
+    if not achieved and not steps:
+        achieved = True  # nothing left to propose — treat the goal as done
+    if goal.cycle >= MAX_CYCLES:  # hard stop so a goal can never loop forever
+        achieved, steps = True, []
 
     if achieved:
         goal.status = "achieved"
@@ -177,7 +149,14 @@ def _plan_initial_tasks(db, goal: GoalRow) -> None:
     """A goal without tasks gets its first plan from the CEO."""
     from .ceo import build_steps, create_tasks_from_steps
 
-    steps = build_steps(f"{goal.title}. {goal.description}".strip(), goal.company_id)
+    try:
+        steps = build_steps(f"{goal.title}. {goal.description}".strip(), goal.company_id)
+    except Exception as exc:  # noqa: BLE001 - a bad reply must not wedge the loop
+        add_event(db, "autopilot",
+                  f"Autopilot could not plan '{goal.title}': {compress_text(str(exc), 160)}",
+                  goal.company_id)
+        db.commit()
+        return
     created, _ = create_tasks_from_steps(db, steps, goal.company_id, priority="high")
     for info in created:
         task = db.get(TaskRow, info["id"])

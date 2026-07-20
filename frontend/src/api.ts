@@ -98,7 +98,7 @@ export interface Company {
 
 export interface OnboardResult {
   company: { id: number; name: string; mission: string }
-  agents: { id: number; name: string; role: string; skills: string[] }[]
+  agents: { id: number; name: string; role: string; specialty: string; skills: string[] }[]
   goal: { id: number; title: string }
   tasks: { id: number; title: string; agent: string }[]
 }
@@ -172,7 +172,6 @@ export interface Settings {
   openrouter_api_key_set: boolean
   default_model: string
   price_per_1k_tokens: string
-  fake_llm: boolean
 }
 
 /** Active company — every request is scoped to it via the X-Company-Id header. */

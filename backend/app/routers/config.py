@@ -6,8 +6,8 @@ company itself — see PATCH /api/companies/{id}.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..crew_runner import DEFAULT_MODEL, fake_llm_enabled, get_setting
 from ..db import SettingRow, get_db
+from ..llm import DEFAULT_MODEL, get_setting
 from ..schemas import SettingsIn, SettingsOut
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -27,7 +27,6 @@ def get_settings(db: Session = Depends(get_db)):
         openrouter_api_key_set=bool(get_setting(db, "openrouter_api_key")),
         default_model=get_setting(db, "default_model", DEFAULT_MODEL),
         price_per_1k_tokens=get_setting(db, "price_per_1k_tokens", "0"),
-        fake_llm=fake_llm_enabled(),
     )
 
 

@@ -1,22 +1,15 @@
 """CEO brain: chat objectives → plans → delegated tasks, plus plan documents.
 
-All lookups are company-scoped: a CEO only ever sees and delegates to the crew
-of its own company.
-
-Fake mode is deterministic (demo/CI). Real mode asks the CEO agent via the
-OpenRouter LLM. When a plan step needs a specialty no agent covers, the CEO
-files a pending hire request instead of silently mis-assigning (governance).
+All lookups are company-scoped: a CEO only sees and delegates to its own crew.
+When a plan step needs a specialty no agent covers, the CEO files a pending
+hire request instead of silently mis-assigning (governance).
 """
-import json
-import re
-
 from sqlalchemy import select
 
-from .crew_runner import DEFAULT_MODEL, fake_llm_enabled, get_setting
+from . import llm
 from .db import (
     AgentRow,
     ChatMessageRow,
-    CompanyRow,
     HireRequestRow,
     PlanRow,
     SessionLocal,
@@ -25,12 +18,35 @@ from .db import (
 )
 from .token_optimizer import TERSE_SUFFIX, compress_text
 
-PLAN_PROMPT = (
-    "You are the CEO of an AI company. Break this objective into 2-4 concrete, "
-    "self-contained tasks. Reply ONLY with a JSON array of objects with keys "
-    '"title", "description", "specialty" (one of: research, writing, engineering, '
-    "analysis, general). Objective:\n{objective}" + TERSE_SUFFIX
-)
+PLAN_PROMPT = """You are the CEO of this company.
+
+Company: {company}
+Mission: {mission}
+Crew available (specialty — role): {crew}
+
+Break this objective into 2-4 concrete, self-contained tasks that this crew can
+actually execute, in order. Assign each to the specialty best suited to it,
+preferring specialties that already exist on the crew.
+
+Objective: {objective}
+
+Reply with ONLY a JSON array, no prose:
+[{{"title": "...", "description": "...", "specialty": "..."}}]""" + TERSE_SUFFIX
+
+
+def _company_context(db, company_id: int) -> tuple[str, str, str]:
+    from .db import CompanyRow
+
+    company = db.get(CompanyRow, company_id)
+    agents = db.scalars(
+        select(AgentRow).where(AgentRow.company_id == company_id).order_by(AgentRow.id)
+    ).all()
+    crew = ", ".join(f"{a.specialty} — {a.role}" for a in agents) or "none yet"
+    return (
+        company.name if company else "the company",
+        company.mission if company else "",
+        crew,
+    )
 
 
 def match_agent(db, specialty: str, company_id: int) -> tuple[AgentRow | None, bool]:
@@ -39,11 +55,17 @@ def match_agent(db, specialty: str, company_id: int) -> tuple[AgentRow | None, b
         select(AgentRow).where(AgentRow.company_id == company_id).order_by(AgentRow.id)
     ).all()
     workers = [a for a in agents if not a.is_ceo] or agents
-    needle = (specialty or "general").lower()
-    for agent in workers:
-        haystack = f"{agent.specialty} {agent.role} {agent.goal}".lower()
-        if needle in haystack:
-            return agent, True
+    needle = (specialty or "general").lower().strip()
+    if needle:
+        for agent in workers:
+            if needle == agent.specialty.lower():
+                return agent, True
+        for agent in workers:
+            haystack = f"{agent.specialty} {agent.role} {agent.goal}".lower()
+            if needle in haystack or any(
+                word and word in haystack for word in needle.split("-")
+            ):
+                return agent, True
     return (workers[0] if workers else None), False
 
 
@@ -74,59 +96,23 @@ def _maybe_request_hire(db, specialty: str, company_id: int) -> bool:
     return True
 
 
-def _fake_steps(objective: str) -> list[dict]:
-    topic = compress_text(objective, 120)
-    return [
-        {
-            "title": f"Research: {topic}",
-            "description": f"Gather key facts and constraints for: {objective}",
-            "specialty": "research",
-        },
-        {
-            "title": f"Execute: {topic}",
-            "description": f"Produce the main deliverable for: {objective}",
-            "specialty": "writing",
-        },
-        {
-            "title": f"Review: {topic}",
-            "description": f"Quality-check the deliverable for: {objective}",
-            "specialty": "analysis",
-        },
-    ]
-
-
-def _llm_call(prompt: str, max_tokens: int = 1024, company_id: int = 0) -> str:
-    from crewai import LLM
-
+def build_steps(objective: str, company_id: int = 0) -> list[dict]:
     db = SessionLocal()
     try:
-        api_key = get_setting(db, "openrouter_api_key")
-        company = db.get(CompanyRow, company_id) if company_id else None
-        model = (
-            (company.default_model if company and company.default_model else "")
-            or get_setting(db, "default_model", "")
-            or DEFAULT_MODEL
-        )
+        company, mission, crew = _company_context(db, company_id)
     finally:
         db.close()
-    if not api_key:
-        raise RuntimeError("No OpenRouter API key configured — add one in Settings.")
-    llm = LLM(model=f"openrouter/{model}", api_key=api_key,
-              base_url="https://openrouter.ai/api/v1", max_tokens=max_tokens)
-    return str(llm.call(prompt))
-
-
-def _llm_steps(objective: str, company_id: int) -> list[dict]:
-    raw = _llm_call(PLAN_PROMPT.format(objective=objective), company_id=company_id)
-    match = re.search(r"\[.*\]", raw, re.DOTALL)
-    if not match:
-        raise RuntimeError(f"CEO returned no JSON plan: {raw:.300}")
-    plan = json.loads(match.group(0))
-    return [p for p in plan if isinstance(p, dict) and p.get("title")][:4]
-
-
-def build_steps(objective: str, company_id: int = 0) -> list[dict]:
-    return _fake_steps(objective) if fake_llm_enabled() else _llm_steps(objective, company_id)
+    steps = llm.call_json(
+        PLAN_PROMPT.format(
+            company=company, mission=mission, crew=crew, objective=objective
+        ),
+        max_tokens=1200,
+        company_id=company_id,
+        as_list=True,
+    )
+    if not isinstance(steps, list):
+        raise llm.LLMError("The CEO did not return a task list.")
+    return [s for s in steps if isinstance(s, dict) and s.get("title")][:4]
 
 
 def create_tasks_from_steps(
@@ -136,14 +122,14 @@ def create_tasks_from_steps(
     created, hires = [], 0
     previous_id: int | None = None
     for step in steps:
-        specialty = step.get("specialty", "")
+        specialty = str(step.get("specialty", "")).lower().strip()
         agent, exact = match_agent(db, specialty, company_id)
         if not exact and _maybe_request_hire(db, specialty, company_id):
             hires += 1
         task = TaskRow(
             company_id=company_id,
-            title=step["title"][:200],
-            description=step.get("description", ""),
+            title=str(step["title"])[:200],
+            description=str(step.get("description", "")),
             agent_id=agent.id if agent else None,
             depends_on=str(previous_id) if previous_id else "",
             priority=priority,
@@ -184,20 +170,17 @@ def handle_message(message: str, company_id: int) -> dict:
 
 
 def draft_plan_content(title: str, objective: str, company_id: int = 0) -> str:
-    """Markdown plan document. Deterministic in fake mode, LLM otherwise."""
-    if fake_llm_enabled():
-        steps = _fake_steps(objective)
-        lines = [f"# {title}", "", f"**Objective:** {objective}", "", "## Steps", ""]
-        for i, step in enumerate(steps, 1):
-            lines.append(f"{i}. **{step['title']}** ({step['specialty']})")
-            lines.append(f"   {step['description']}")
-        lines += ["", "## Risks", "- Scope creep — keep steps self-contained.",
-                  "- Review quality — final step verifies the deliverable."]
-        return "\n".join(lines)
-    return _llm_call(
-        f"Write a concise markdown execution plan titled '{title}' for this objective. "
-        f"Sections: Objective, Steps (numbered, each with a specialty tag), Risks.\n"
-        f"Objective: {objective}" + TERSE_SUFFIX,
+    """Markdown plan document written by the CEO."""
+    db = SessionLocal()
+    try:
+        company, mission, crew = _company_context(db, company_id)
+    finally:
+        db.close()
+    return llm.call_text(
+        f"You are the CEO of {company}. Mission: {mission}. Crew: {crew}.\n"
+        f"Write a concise markdown execution plan titled '{title}'. "
+        f"Sections: Objective, Steps (numbered, each tagged with the specialty that owns it), "
+        f"Risks.\nObjective: {objective}" + TERSE_SUFFIX,
         max_tokens=1500,
         company_id=company_id,
     )
@@ -210,12 +193,46 @@ def convert_plan(plan_id: int) -> list[dict]:
         plan = db.get(PlanRow, plan_id)
         if plan is None:
             raise ValueError("Plan not found")
-        steps = build_steps(plan.objective or plan.title, plan.company_id)
-        created, _hires = create_tasks_from_steps(db, steps, plan.company_id)
+        company_id = plan.company_id
+        objective = plan.objective or plan.title
+    finally:
+        db.close()
+
+    steps = build_steps(objective, company_id)
+
+    db = SessionLocal()
+    try:
+        plan = db.get(PlanRow, plan_id)
+        created, _hires = create_tasks_from_steps(db, steps, company_id)
         plan.status = "converted"
         add_event(db, "plan", f"Plan '{plan.title}' converted into {len(created)} tasks",
-                  plan.company_id)
+                  company_id)
         db.commit()
         return created
     finally:
         db.close()
+
+
+def summarize_for_goal(goal_title: str, done_titles: list[str], company_id: int) -> tuple[bool, list[dict]]:
+    """Judge whether a goal is met and propose the next tasks if not."""
+    done = "\n".join(f"- {t}" for t in done_titles) or "- (nothing yet)"
+    data = llm.call_json(
+        f"Goal: {goal_title}\nCompleted tasks:\n{done}\n\n"
+        "Is this goal fully achieved? If not, propose up to 3 concrete follow-up tasks "
+        "that would finish it. Reply ONLY JSON: "
+        '{"achieved": true|false, "next_tasks": [{"title": "...", "description": "...", '
+        '"specialty": "..."}]}' + TERSE_SUFFIX,
+        max_tokens=900,
+        company_id=company_id,
+    )
+    if not isinstance(data, dict):
+        return True, []
+    next_tasks = [
+        t for t in (data.get("next_tasks") or [])
+        if isinstance(t, dict) and t.get("title")
+    ][:3]
+    return bool(data.get("achieved")), next_tasks
+
+
+def compress(text: str, budget: int) -> str:
+    return compress_text(text, budget)

@@ -26,19 +26,83 @@ def test_company_creation_builds_crew_and_first_goal():
     cid = body["company"]["id"]
 
     assert body["company"]["name"] == "Nimbus Media"
-    assert len(body["agents"]) >= 5
+    assert len(body["agents"]) >= 4
     assert all(a["skills"] for a in body["agents"])
+    # the crew is designed for THIS business, not a fixed roster
+    assert any(a["specialty"] == "marketing" for a in body["agents"])
+    assert sum(1 for a in body["agents"] if a["role"].startswith("CEO")) == 1
     assert body["goal"]["title"] == "Launch the first client campaign"
     assert len(body["tasks"]) >= 3
 
     listed = client.get("/api/companies").json()
     nimbus = [c for c in listed if c["id"] == cid][0]
-    assert nimbus["agents"] >= 5
+    assert nimbus["agents"] == len(body["agents"])
     assert nimbus["active_goals"] == 1
 
     goal_tasks = client.get(f"/api/goals/{body['goal']['id']}/tasks", headers=head(cid)).json()
     assert len(goal_tasks) >= 3
     assert all(t["company_id"] == cid for t in goal_tasks)
+
+
+def test_crew_is_tailored_to_each_business():
+    """Different missions and goals staff different functions."""
+    finance = client.post(
+        "/api/companies",
+        json={
+            "company_name": "Ledger Row",
+            "mission": "We run subscription pricing and revenue operations for SaaS",
+            "first_goal": "Rebuild the pricing model to lift revenue",
+        },
+    ).json()
+    devtools = client.post(
+        "/api/companies",
+        json={
+            "company_name": "Forge API",
+            "mission": "We build developer tools and API documentation",
+            "first_goal": "Ship the developer docs portal",
+        },
+    ).json()
+
+    finance_specialties = {a["specialty"] for a in finance["agents"]}
+    devtools_specialties = {a["specialty"] for a in devtools["agents"]}
+
+    assert "finance" in finance_specialties
+    assert "engineering" in devtools_specialties
+    assert finance_specialties != devtools_specialties
+
+    # tasks are delegated to agents that actually exist on that crew
+    for company in (finance, devtools):
+        names = {a["name"] for a in company["agents"]}
+        assert all(t["agent"] in names for t in company["tasks"])
+
+
+def test_company_creation_requires_an_api_key():
+    from app.db import SessionLocal, SettingRow
+
+    db = SessionLocal()
+    try:
+        row = db.get(SettingRow, "openrouter_api_key")
+        saved = row.value
+        row.value = ""
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        blocked = client.post(
+            "/api/companies",
+            json={"company_name": "Keyless Co", "mission": "m", "first_goal": "g"},
+        )
+        assert blocked.status_code == 400
+        assert "OpenRouter API key" in blocked.json()["detail"]
+        assert all(c["name"] != "Keyless Co" for c in client.get("/api/companies").json())
+    finally:
+        db = SessionLocal()
+        try:
+            db.get(SettingRow, "openrouter_api_key").value = saved
+            db.commit()
+        finally:
+            db.close()
 
 
 def test_skills_crud_and_generation():
@@ -77,7 +141,8 @@ def test_skills_appear_in_run_log():
             break
         time.sleep(0.2)
     assert current["status"] == "completed"
-    assert "Applying skills" in current["log"]
+    assert "[skills]" in current["log"]
+    assert "Deep research" in current["log"]
 
 
 def test_autopilot_works_goal_to_completion():

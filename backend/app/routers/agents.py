@@ -146,45 +146,39 @@ def generate_skills(
     company_id: int = Depends(current_company_id),
 ):
     """CEO distributes skills that fit this agent's role and specialty."""
+    from .. import llm
+
     agent = _scoped(db, agent_id, company_id)
-
-    from ..crew_runner import fake_llm_enabled
-
     existing = {
         s.name.lower()
         for s in db.scalars(select(SkillRow).where(SkillRow.agent_id == agent_id))
     }
-    if fake_llm_enabled():
-        base = agent.specialty or agent.role
-        candidates = [
-            {"name": f"{base.title()} fundamentals",
-             "description": f"Core techniques for {base} work"},
-            {"name": f"Advanced {base}", "description": f"Deep expertise in {base}"},
-            {"name": "Concise reporting", "description": "Dense, clear result summaries"},
-        ]
-    else:
-        import json
-        import re
 
-        from ..ceo import _llm_call
-
-        raw = _llm_call(
+    try:
+        candidates = llm.call_json(
             f"Agent role: {agent.role}. Specialty: {agent.specialty}. Goal: {agent.goal}.\n"
-            'Propose 3 skills. Reply ONLY JSON: [{"name", "description"}]',
-            max_tokens=500,
+            f"Already has: {', '.join(existing) or 'nothing'}.\n"
+            "Propose 3 concrete new skills this specific role needs. "
+            'Reply ONLY JSON: [{"name": "...", "description": "..."}]',
+            max_tokens=600,
             company_id=company_id,
+            as_list=True,
         )
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            raise HTTPException(502, "CEO returned no skills")
-        candidates = json.loads(match.group(0))
+    except llm.LLMNotConfigured as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except llm.LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    if not isinstance(candidates, list):
+        raise HTTPException(502, "The CEO did not return a skill list")
 
     created = []
     for skill in candidates[:5]:
-        if skill.get("name", "").lower() in existing:
+        if not isinstance(skill, dict) or not skill.get("name"):
             continue
-        row = SkillRow(agent_id=agent_id, name=skill["name"][:120],
-                       description=skill.get("description", ""))
+        if str(skill["name"]).lower() in existing:
+            continue
+        row = SkillRow(agent_id=agent_id, name=str(skill["name"])[:120],
+                       description=str(skill.get("description", "")))
         db.add(row)
         created.append(row)
     add_event(db, "skill", f"Skills distributed to {agent.name}: "

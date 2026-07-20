@@ -33,10 +33,14 @@ def create_plan(
     db: Session = Depends(get_db),
     company_id: int = Depends(require_company_id),
 ):
+    from .. import llm
+
     content = payload.content
     if payload.draft_with_ceo:
         try:
             content = draft_plan_content(payload.title, payload.objective, company_id)
+        except llm.LLMNotConfigured as exc:
+            raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - surface planner errors
             raise HTTPException(502, f"CEO could not draft the plan: {exc}") from exc
     row = PlanRow(

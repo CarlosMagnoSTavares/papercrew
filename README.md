@@ -14,7 +14,15 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 ## The magic: describe your company, watch it work
 
 0. **Many companies, at once** — create as many companies as you like. Each owns its crew, goals, board and history, and every one runs its own autopilot **in parallel**. Switch between them from the sidebar; archive one to put it to sleep without losing anything.
-1. **Onboarding** — tell PaperCrew a company name, mission and first goal. The CEO designs the team, hires the right agents, **distributes tailored skills to each one**, and plans the first project.
+1. **Onboarding** — tell PaperCrew a company name, mission and first goal. The CEO **designs a crew for that specific business** — there is no fixed roster. A digital marketing agency chasing recurring revenue gets a strategy-minded CEO plus sales, paid-traffic, content and operations specialists, each with skills that match the role, and it plans in the language you wrote the mission in:
+
+```
+Rafaela   [strategy]      CEO                        packaging-offers, pricing-model, pipeline-management
+Tiago     [sales]         Especialista em Aquisição  outbound-linkedin, discovery-call, proposal-deck
+Marina    [paid-traffic]  Gestora de Tráfego Pago    account-setup, creative-testing, budget-pacing
+Lucas     [content]       Produtor de Conteúdo       content-calendar, batch-production, approval-flow
+Sofia     [operations]    Operações & Entrega        onboarding-checklist, bi-report, client-comm
+```
 2. **Autopilot** — agents don't run one prompt and die. For every active goal the autopilot continuously: runs the next ready task → auto-approves results (CEO sign-off) → retries failures with feedback → **plans complementary tasks** when a cycle completes → and only stops when the goal is achieved (or you pause it). Every action is visible in the activity feed.
 3. **Self-optimization** — every run passes through the native token optimizer, failed work is retried with the error fed back, and skills sharpen each agent's prompts.
 
@@ -33,7 +41,7 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 | Feature | How it works |
 |---|---|
 | **Multi-company** | Run several companies side by side — isolated crews, goals, boards, chats and costs; sidebar switcher, per-company model override and budget, archive/restore, and permanent delete guarded by typing the company name |
-| **Company onboarding** | One form → CEO builds the team, distributes skills, creates the first goal and plans the onboarding project |
+| **Company onboarding** | One form → the CEO designs a crew for *that* business (roles, specialties and skills are generated, never templated), creates the first goal and plans the opening project |
 | **Goals + Autopilot** | Progress-tracked goals; the autopilot works each active goal to completion autonomously (pause/resume anytime) |
 | **Skills** | Per-agent skills stored, injected into CrewAI prompts, distributed at onboarding and generatable per agent |
 | **CEO Chat** | Describe an objective; the CEO agent breaks it into 2–4 tasks, chains them by dependency and delegates each to the best-fit agent by specialty |
@@ -62,25 +70,23 @@ The dashboard shows **tokens saved** by the optimizer next to total token usage 
 
 ## Screenshots
 
-| Onboarding — describe a company | Company built: team + skills + first goal |
-|---|---|
-| ![Onboarding](docs/evidence/01-onboarding.png) | ![Company ready](docs/evidence/02-company-ready.png) |
+All screenshots below are a real run against OpenRouter — no simulated data.
 
-| Autopilot working, live toasts | Sidebar company switcher |
+| Dashboard (real tokens, savings, activity) | Goal reached by the autopilot alone |
 |---|---|
-| ![Autopilot](docs/evidence/03-goals-live-toast.png) | ![Switcher](docs/evidence/04-company-switcher.png) |
+| ![Dashboard](docs/evidence/01-dashboard.png) | ![Goal achieved](docs/evidence/02-goal-achieved.png) |
 
-| Two companies running in parallel | Both goals achieved autonomously |
+| Crew designed for this business | Task board after the autopilot worked it |
 |---|---|
-| ![Parallel](docs/evidence/05-companies-parallel.png) | ![Achieved](docs/evidence/06-companies-achieved.png) |
+| ![Agents](docs/evidence/03-agents-tailored.png) | ![Board](docs/evidence/04-board.png) |
 
-| Dashboard (activity, tokens, cost) | Agents with distributed skills |
+| Real crew output on a finished task | Deliverables collected |
 |---|---|
-| ![Dashboard](docs/evidence/08-dashboard.png) | ![Agents](docs/evidence/09-agents-skills.png) |
+| ![Task output](docs/evidence/05-task-output.png) | ![Deliverables](docs/evidence/06-deliverables.png) |
 
-| Deleting a company (typed confirmation) | Only the deleted one is gone |
+| Run history with token metrics | Companies |
 |---|---|
-| ![Delete](docs/evidence/12-delete-company.png) | ![After delete](docs/evidence/13-after-delete.png) |
+| ![Runs](docs/evidence/07-runs.png) | ![Companies](docs/evidence/08-companies.png) |
 
 ## Architecture
 
@@ -121,13 +127,11 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173 → **Settings** → paste your [OpenRouter API key](https://openrouter.ai/keys) (free tier works) → talk to the CEO.
 
-### Demo mode (no API key, zero tokens)
+### An API key is required
 
-```bash
-PAPERCREW_FAKE_LLM=1 python -m uvicorn app.main:app --port 8000
-```
-
-Runs and plans are simulated deterministically — perfect for exploring the UI and for CI.
+PaperCrew has no demo or simulated mode: agents always run on a real model. On
+first launch it asks for your OpenRouter key before letting you create a
+company, and the default model is **free**, so trying it costs nothing.
 
 ## Configuration
 
@@ -140,7 +144,6 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 | Per-company model override | Companies page → Edit | inherits global default |
 | Per-company budget cap | Companies page → Edit | 0 (unlimited) |
 | Per-agent model | Agent form, "Model override" | inherits company/global |
-| Demo mode | `PAPERCREW_FAKE_LLM=1` env | off |
 | Scheduler | `PAPERCREW_SCHEDULER=0` to disable | on |
 | Autopilot | `PAPERCREW_AUTOPILOT=0` to disable | on |
 | DB path | `PAPERCREW_DB` env | `backend/papercrew.db` |
@@ -151,7 +154,11 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 cd backend && ../.venv/Scripts/python -m pytest tests/ -v
 ```
 
-**39 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (company creation builds the crew with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume), multi-company tests (**data isolation, blocked cross-company access, two autopilots reaching their goals in parallel**, archive/restore, cascading delete that leaves other companies untouched) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
+Tests stub only the network boundary (`llm.call_text`, `llm.call_json`,
+`crew_runner.invoke_crew`) — there is no demo mode to test against — so every
+other path runs for real.
+
+**41 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (company creation builds the crew with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume), multi-company tests (**data isolation, blocked cross-company access, two autopilots reaching their goals in parallel**, archive/restore, cascading delete that leaves other companies untouched), tests that **crews differ per business** (a finance mission staffs finance, a dev-tools mission staffs engineering) and that **company creation is refused without an API key**, plus unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
 
 ## Roadmap / contributing
 

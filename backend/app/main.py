@@ -1,16 +1,14 @@
 """PaperCrew API — Paperclip-style control plane, CrewAI-powered backend.
 
 Multi-company: every company owns its crew, goals and history, and their
-autopilots run side by side.
+autopilots run side by side. Every crew is designed by the model for that
+specific business — there is no built-in roster and no simulated mode.
 """
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
 
 from .autopilot import start_autopilot
-from .db import AgentRow, CompanyRow, SessionLocal, init_db
+from .db import init_db
 from .routers import (
     agents,
     chat,
@@ -26,66 +24,9 @@ from .routers import (
 )
 from .scheduler import start_scheduler
 
-SEED_AGENTS = [
-    {
-        "name": "Atlas",
-        "role": "CEO / Orchestrator",
-        "goal": "Break down objectives, delegate work and review results",
-        "backstory": "Founder-mode operator that keeps the crew focused and shipping.",
-        "specialty": "general",
-        "is_ceo": 1,
-    },
-    {
-        "name": "Nova",
-        "role": "Researcher",
-        "goal": "Gather accurate, well-sourced information for any topic",
-        "backstory": "Curious analyst that digs deep and summarizes clearly.",
-        "specialty": "research",
-    },
-    {
-        "name": "Scribe",
-        "role": "Writer",
-        "goal": "Turn research and ideas into polished, structured documents",
-        "backstory": "Technical writer with a knack for clarity and concision.",
-        "specialty": "writing",
-    },
-    {
-        "name": "Vector",
-        "role": "Engineer",
-        "goal": "Design and reason about technical solutions and code",
-        "backstory": "Pragmatic engineer that favors simple, working solutions.",
-        "specialty": "engineering",
-    },
-    {
-        "name": "Prism",
-        "role": "Analyst",
-        "goal": "Review deliverables critically and verify quality",
-        "backstory": "Detail-oriented reviewer with high standards.",
-        "specialty": "analysis",
-    },
-]
-
-
-def seed_if_empty() -> None:
-    """Demo/test seeding only — real companies are built via POST /api/companies."""
-    if os.getenv("PAPERCREW_SEED", "0") != "1":
-        return
-    db = SessionLocal()
-    try:
-        if db.scalars(select(CompanyRow)).first() is not None:
-            return
-        company = CompanyRow(name="Demo Co", mission="Seeded demo company")
-        db.add(company)
-        db.flush()
-        for spec in SEED_AGENTS:
-            db.add(AgentRow(company_id=company.id, **spec))
-        db.commit()
-    finally:
-        db.close()
-
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="PaperCrew", version="0.6.0")
+    app = FastAPI(title="PaperCrew", version="0.7.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -105,7 +46,6 @@ def create_app() -> FastAPI:
 
 
 init_db()
-seed_if_empty()
 start_scheduler()
 start_autopilot()
 app = create_app()

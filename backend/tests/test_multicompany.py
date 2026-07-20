@@ -197,7 +197,7 @@ def test_delete_company_removes_everything_it_owned():
     survivors = client.get("/api/companies").json()
     assert any(c["name"] == "Alpha Labs" for c in survivors)
     alpha = [c for c in survivors if c["name"] == "Alpha Labs"][0]
-    assert alpha["agents"] >= 5
+    assert alpha["agents"] >= 3
 
 
 def test_delete_missing_company_404():
@@ -209,9 +209,9 @@ def test_company_summary_counts():
     alpha = [c for c in companies if c["name"] == "Alpha Labs"][0]
     beta = [c for c in companies if c["name"] == "Beta Studio"][0]
 
-    assert alpha["agents"] >= 5
+    assert alpha["agents"] >= 3
     assert alpha["active_goals"] == 0  # its goal was achieved
-    assert alpha["total_cost"] == 0.0  # free model in demo mode
+    assert alpha["total_cost"] == 0.0  # price_per_1k_tokens defaults to 0
 
     # Alpha's extra open tasks came from its CEO chat (outside any goal, so the
     # autopilot left them alone); Beta never chatted and has none.
