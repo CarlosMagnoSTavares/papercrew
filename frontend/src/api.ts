@@ -240,6 +240,11 @@ export const api = {
     ) => request<Company>(`/api/companies/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     archive: (id: number) => request<Company>(`/api/companies/${id}/archive`, { method: 'POST' }),
     restore: (id: number) => request<Company>(`/api/companies/${id}/restore`, { method: 'POST' }),
+    remove: (id: number, confirmName: string) =>
+      request<void>(
+        `/api/companies/${id}?confirm_name=${encodeURIComponent(confirmName)}`,
+        { method: 'DELETE' },
+      ),
   },
   goals: {
     list: () => request<Goal[]>('/api/goals'),

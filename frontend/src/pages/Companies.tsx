@@ -13,6 +13,9 @@ export default function Companies({ activeId, onSwitch, onCreate, onChanged }: P
   const [companies, setCompanies] = useState<Company[]>([])
   const [editing, setEditing] = useState<Company | null>(null)
   const [form, setForm] = useState({ name: '', mission: '', default_model: '', monthly_budget: 0 })
+  const [deleting, setDeleting] = useState<Company | null>(null)
+  const [confirmName, setConfirmName] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const toast = useToast()
 
   const refresh = () =>
@@ -56,6 +59,26 @@ export default function Companies({ activeId, onSwitch, onCreate, onChanged }: P
     toast('success', `${company.name} restored`)
     refresh()
     onChanged()
+  }
+
+  const openDelete = (company: Company) => {
+    setDeleting(company)
+    setConfirmName('')
+    setDeleteError('')
+  }
+
+  const confirmDelete = async () => {
+    if (!deleting) return
+    setDeleteError('')
+    try {
+      await api.companies.remove(deleting.id, confirmName)
+      toast('info', `${deleting.name} deleted permanently`)
+      setDeleting(null)
+      await refresh()
+      onChanged()
+    } catch (err) {
+      setDeleteError(String(err))
+    }
   }
 
   return (
@@ -128,14 +151,60 @@ export default function Companies({ activeId, onSwitch, onCreate, onChanged }: P
                   Restore
                 </button>
               ) : (
-                <button className="btn btn-danger" onClick={() => archive(company)}>
+                <button className="btn btn-warn" onClick={() => archive(company)}>
                   Archive
                 </button>
               )}
+              <button
+                className="btn btn-danger"
+                title="Permanently delete this company and all its data"
+                onClick={() => openDelete(company)}
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
       </div>
+
+      {deleting && (
+        <div className="modal-backdrop" onClick={() => setDeleting(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete {deleting.name}?</h2>
+            <div className="danger-box">
+              <strong>This cannot be undone.</strong> It permanently removes{' '}
+              {deleting.agents} agents and their skills, every task, run, comment, goal, plan,
+              routine, hire request and the whole chat and activity history of this company.
+              <br />
+              <br />
+              Want to keep the history instead? <em>Archive</em> stops the company without deleting
+              anything.
+            </div>
+            {deleteError && <div className="error">{deleteError}</div>}
+            <label>
+              Type <strong>{deleting.name}</strong> to confirm
+              <input
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+                placeholder={deleting.name}
+                autoFocus
+              />
+            </label>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setDeleting(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={confirmName !== deleting.name}
+                onClick={confirmDelete}
+              >
+                Delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="modal-backdrop" onClick={() => setEditing(null)}>

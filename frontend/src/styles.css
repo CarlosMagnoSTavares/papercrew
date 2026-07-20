@@ -280,6 +280,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .company-head { display: flex; align-items: center; gap: 10px; }
 .company-stats { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
 .company-stats span { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+.company-card .card-actions { flex-wrap: wrap; }
+
+.danger-box { background: rgba(255, 107, 107, 0.1); border: 1px solid var(--danger); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; }
 
 /* Responsive sidebar */
 @media (max-width: 900px) {

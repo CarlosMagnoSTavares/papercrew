@@ -3,7 +3,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db import AgentRow, CompanyRow, GoalRow, RunRow, TaskRow, add_event, get_db
+from ..db import (
+    AgentRow,
+    ChatMessageRow,
+    CommentRow,
+    CompanyRow,
+    EventRow,
+    GoalRow,
+    HireRequestRow,
+    PlanRow,
+    RoutineRow,
+    RunRow,
+    SkillRow,
+    TaskRow,
+    add_event,
+    get_db,
+)
 from ..onboarding import create_company
 from ..schemas import CompanyCreateIn, CompanyOut, CompanyPatch, CompanySummaryOut
 
@@ -111,6 +126,51 @@ def archive_company(company_id: int, db: Session = Depends(get_db)):
         archived=True,
         created_at=company.created_at,
     )
+
+
+@router.delete("/{company_id}", status_code=204)
+def delete_company(
+    company_id: int, confirm_name: str | None = None, db: Session = Depends(get_db)
+):
+    """Permanently delete a company and everything it owns.
+
+    Irreversible — prefer archiving. When `confirm_name` is supplied it must
+    match the company name exactly, which is how the UI guards the action.
+    A run still executing for a deleted task simply finds its row gone and
+    stops writing, so in-flight work cannot resurrect anything.
+    """
+    company = db.get(CompanyRow, company_id)
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    if confirm_name is not None and confirm_name != company.name:
+        raise HTTPException(422, "confirm_name does not match the company name")
+
+    task_ids = list(
+        db.scalars(select(TaskRow.id).where(TaskRow.company_id == company_id))
+    )
+    agent_ids = list(
+        db.scalars(select(AgentRow.id).where(AgentRow.company_id == company_id))
+    )
+    if task_ids:
+        db.query(CommentRow).filter(CommentRow.task_id.in_(task_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(RunRow).filter(RunRow.task_id.in_(task_ids)).delete(
+            synchronize_session=False
+        )
+    if agent_ids:
+        db.query(SkillRow).filter(SkillRow.agent_id.in_(agent_ids)).delete(
+            synchronize_session=False
+        )
+    for model in (
+        TaskRow, AgentRow, GoalRow, PlanRow, RoutineRow,
+        HireRequestRow, ChatMessageRow, EventRow,
+    ):
+        db.query(model).filter(model.company_id == company_id).delete(
+            synchronize_session=False
+        )
+    db.delete(company)
+    db.commit()
 
 
 @router.post("/{company_id}/restore", response_model=CompanyOut)

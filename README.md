@@ -32,7 +32,7 @@ PaperCrew gives you the Paperclip experience (CEO chat, delegation, task board, 
 
 | Feature | How it works |
 |---|---|
-| **Multi-company** | Run several companies side by side — isolated crews, goals, boards, chats and costs; sidebar switcher, per-company model override and budget, archive/restore |
+| **Multi-company** | Run several companies side by side — isolated crews, goals, boards, chats and costs; sidebar switcher, per-company model override and budget, archive/restore, and permanent delete guarded by typing the company name |
 | **Company onboarding** | One form → CEO builds the team, distributes skills, creates the first goal and plans the onboarding project |
 | **Goals + Autopilot** | Progress-tracked goals; the autopilot works each active goal to completion autonomously (pause/resume anytime) |
 | **Skills** | Per-agent skills stored, injected into CrewAI prompts, distributed at onboarding and generatable per agent |
@@ -77,6 +77,10 @@ The dashboard shows **tokens saved** by the optimizer next to total token usage 
 | Dashboard (activity, tokens, cost) | Agents with distributed skills |
 |---|---|
 | ![Dashboard](docs/evidence/08-dashboard.png) | ![Agents](docs/evidence/09-agents-skills.png) |
+
+| Deleting a company (typed confirmation) | Only the deleted one is gone |
+|---|---|
+| ![Delete](docs/evidence/12-delete-company.png) | ![After delete](docs/evidence/13-after-delete.png) |
 
 ## Architecture
 
@@ -147,7 +151,7 @@ Runs and plans are simulated deterministically — perfect for exploring the UI 
 cd backend && ../.venv/Scripts/python -m pytest tests/ -v
 ```
 
-**37 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (company creation builds the crew with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume), multi-company tests (**data isolation, blocked cross-company access, two autopilots reaching their goals in parallel**, archive/restore) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
+**39 tests**: full API coverage (CRUD, validation, dependency blocking, approve/reject feedback loop, CEO planning, hire governance, plan conversion, inbox, work products, agent stats, budget enforcement, routines, events, stats, settings), autonomy tests (company creation builds the crew with skills, **autopilot drives a goal from zero to achieved**, skills injected into runs, goal pause/resume), multi-company tests (**data isolation, blocked cross-company access, two autopilots reaching their goals in parallel**, archive/restore, cascading delete that leaves other companies untouched) and unit tests for the token optimizer. Evidence in [docs/evidence](docs/evidence).
 
 ## Roadmap / contributing
 

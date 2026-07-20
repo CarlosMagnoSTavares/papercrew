@@ -141,6 +141,69 @@ def test_archive_stops_a_company_and_restore_brings_it_back():
     assert client.get("/api/goals", headers=head(cid)).status_code == 200
 
 
+def test_delete_company_removes_everything_it_owned():
+    from app.db import (
+        AgentRow,
+        ChatMessageRow,
+        CommentRow,
+        EventRow,
+        GoalRow,
+        RunRow,
+        SessionLocal,
+        SkillRow,
+        TaskRow,
+    )
+
+    doomed = make_company("Delta Inc", "Ship the Delta launch")
+    cid = doomed["company"]["id"]
+    task_id = doomed["tasks"][0]["id"]
+
+    client.post("/api/chat", json={"message": "Delta objective"}, headers=head(cid))
+    run = client.post(f"/api/tasks/{task_id}/run", headers=head(cid)).json()
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if client.get(f"/api/runs/{run['id']}", headers=head(cid)).json()["status"] != "running":
+            break
+        time.sleep(0.2)
+    client.post(f"/api/tasks/{task_id}/approve", headers=head(cid))
+
+    # a wrong confirmation name must not delete anything
+    assert client.request(
+        "DELETE", f"/api/companies/{cid}", params={"confirm_name": "Wrong Name"}
+    ).status_code == 422
+    assert any(c["id"] == cid for c in client.get("/api/companies").json())
+
+    assert client.request(
+        "DELETE", f"/api/companies/{cid}", params={"confirm_name": "Delta Inc"}
+    ).status_code == 204
+
+    assert all(c["id"] != cid for c in client.get("/api/companies?include_archived=true").json())
+    assert client.get("/api/agents", headers=head(cid)).status_code == 404
+
+    db = SessionLocal()
+    try:
+        assert db.query(AgentRow).filter(AgentRow.company_id == cid).count() == 0
+        assert db.query(TaskRow).filter(TaskRow.company_id == cid).count() == 0
+        assert db.query(GoalRow).filter(GoalRow.company_id == cid).count() == 0
+        assert db.query(ChatMessageRow).filter(ChatMessageRow.company_id == cid).count() == 0
+        assert db.query(EventRow).filter(EventRow.company_id == cid).count() == 0
+        assert db.query(RunRow).filter(RunRow.task_id == task_id).count() == 0
+        assert db.query(CommentRow).filter(CommentRow.task_id == task_id).count() == 0
+        assert db.query(SkillRow).count() > 0  # other companies' skills survive
+    finally:
+        db.close()
+
+    # surviving companies are untouched
+    survivors = client.get("/api/companies").json()
+    assert any(c["name"] == "Alpha Labs" for c in survivors)
+    alpha = [c for c in survivors if c["name"] == "Alpha Labs"][0]
+    assert alpha["agents"] >= 5
+
+
+def test_delete_missing_company_404():
+    assert client.delete("/api/companies/99999").status_code == 404
+
+
 def test_company_summary_counts():
     companies = client.get("/api/companies").json()
     alpha = [c for c in companies if c["name"] == "Alpha Labs"][0]
